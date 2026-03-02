@@ -1,6 +1,6 @@
 # local-whisper
 
-A fast, local speech-to-text tool for macOS, powered by [OpenAI Whisper](https://github.com/openai/whisper). No subscriptions, no cloud, no bs — just local transcription optimized for Apple Silicon.
+A fast, local speech-to-text tool for macOS, powered by [OpenAI Whisper](https://github.com/openai/whisper). No subscriptions, no cloud — just local transcription optimized for Apple Silicon.
 
 ## Why
 

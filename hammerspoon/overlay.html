@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100vh;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, "SF Pro Display", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ─── Shared primitives ─────────────────────────────────────── */
+  .overlay {
+    display: flex; align-items: center;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    position: relative;
+  }
+  .dot {
+    border-radius: 50%; flex: 0 0 auto;
+    animation: pulseDot 1.6s ease-in-out infinite;
+  }
+  body:not(.recording) .dot { animation: none; opacity: 0; }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 0.95; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+  .wave { display: flex; align-items: center; flex: 1 1 auto; justify-content: center; }
+  .wave span {
+    border-radius: 1px;
+    animation: waveBar 1.2s ease-in-out infinite;
+  }
+  body:not(.recording) .wave span { animation: none; height: 15% !important; opacity: 0.3; }
+  .wave span:nth-child(1)  { animation-delay: -0.00s; }
+  .wave span:nth-child(2)  { animation-delay: -0.07s; }
+  .wave span:nth-child(3)  { animation-delay: -0.14s; }
+  .wave span:nth-child(4)  { animation-delay: -0.21s; }
+  .wave span:nth-child(5)  { animation-delay: -0.28s; }
+  .wave span:nth-child(6)  { animation-delay: -0.35s; }
+  .wave span:nth-child(7)  { animation-delay: -0.42s; }
+  .wave span:nth-child(8)  { animation-delay: -0.49s; }
+  .wave span:nth-child(9)  { animation-delay: -0.56s; }
+  .wave span:nth-child(10) { animation-delay: -0.63s; }
+  .wave span:nth-child(11) { animation-delay: -0.70s; }
+  .wave span:nth-child(12) { animation-delay: -0.77s; }
+  .wave span:nth-child(13) { animation-delay: -0.84s; }
+  .wave span:nth-child(14) { animation-delay: -0.91s; }
+  .wave span:nth-child(15) { animation-delay: -0.98s; }
+  .wave span:nth-child(16) { animation-delay: -1.05s; }
+  .wave span:nth-child(17) { animation-delay: -1.12s; }
+  .wave span:nth-child(18) { animation-delay: -1.19s; }
+  .wave span:nth-child(19) { animation-delay: -1.26s; }
+  .wave span:nth-child(20) { animation-delay: -1.33s; }
+  @keyframes waveBar {
+    0%, 100% { height: 15%; opacity: 0.45; }
+    25%  { height: 85%; opacity: 1; }
+    50%  { height: 30%; opacity: 0.6; }
+    75%  { height: 65%; opacity: 0.9; }
+  }
+  .timer {
+    font-family: "SF Mono", "JetBrains Mono", monospace;
+    font-size: 10.5px; opacity: 0.65;
+    flex: 0 0 auto; letter-spacing: 0.03em;
+  }
+  body:not(.recording) .timer { opacity: 0; }
+
+  .transcript {
+    display: none;
+    font-size: 12.5px; line-height: 1.4;
+    max-width: 100%;
+    padding: 0 8px;
+    text-align: center;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+  }
+  body.has-transcript .overlay > .dot,
+  body.has-transcript .overlay > .wave,
+  body.has-transcript .overlay > .timer { display: none; }
+  body.has-transcript .overlay > .transcript { display: block; }
+
+  /* ===========================================================
+     ★ LIQUID GLASS — Apple iOS 26 / macOS Tahoe
+     =========================================================== */
+  body.theme-liquid .overlay {
+    width: 320px; height: 48px;
+    padding: 0 22px;
+    background: rgba(255,255,255,0.14);
+    backdrop-filter: blur(40px) saturate(1.8) brightness(1.08);
+    -webkit-backdrop-filter: blur(40px) saturate(1.8) brightness(1.08);
+    border-radius: 24px;
+    gap: 14px;
+    color: #fdfdfc;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.5),
+      inset 0 -1px 0 rgba(0,0,0,0.12),
+      0 0 0 0.5px rgba(0,0,0,0.25),
+      0 16px 40px -12px rgba(0,0,0,0.4),
+      0 2px 6px -2px rgba(0,0,0,0.3);
+    overflow: hidden;
+  }
+  body.theme-liquid .overlay::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(135deg,
+      rgba(255,255,255,0.42) 0%,
+      rgba(255,255,255,0.08) 28%,
+      transparent 55%);
+    pointer-events: none;
+  }
+  body.theme-liquid .overlay::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background:
+      radial-gradient(ellipse at 15% 0%, rgba(255,255,255,0.24) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 100%, rgba(255,255,255,0.08) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  body.theme-liquid .overlay > * { position: relative; z-index: 1; }
+  body.theme-liquid .dot { width: 7px; height: 7px; background: #ff453a;
+    box-shadow: 0 0 8px rgba(255,69,58,0.6), 0 0 0 2px rgba(255,69,58,0.12); }
+  body.theme-liquid .wave { height: 22px; gap: 3px; }
+  body.theme-liquid .wave span { width: 2px; background: rgba(255,255,255,0.95);
+    box-shadow: 0 0 4px rgba(255,255,255,0.3); }
+  body.theme-liquid .timer { color: rgba(255,255,255,0.78); }
+
+  /* ─── Editorial ─────────────────────────────────────────────── */
+  body.theme-editorial .overlay {
+    width: 340px; height: 40px;
+    padding: 0 18px 0 14px;
+    background: #111112;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    gap: 14px;
+    box-shadow:
+      0 1px 0 0 rgba(255,255,255,0.04) inset,
+      0 10px 30px -12px rgba(0,0,0,0.6),
+      0 0 0 1px rgba(0,0,0,0.4);
+    color: #eaeae6;
+  }
+  body.theme-editorial .overlay::before {
+    content: ""; width: 2px; height: 14px; background: #d4884c;
+    border-radius: 1px; margin-right: 2px; flex: 0 0 auto;
+  }
+  body.theme-editorial .dot { display: none; }
+  body.theme-editorial .wave { height: 16px; gap: 3px; }
+  body.theme-editorial .wave span { width: 2px; background: #d8d6d0; }
+  body.theme-editorial .timer { color: #6a6a66; font-size: 10px; }
+
+  /* ─── Fog ───────────────────────────────────────────────────── */
+  body.theme-fog .overlay {
+    width: 320px; height: 44px; padding: 0 22px;
+    background: #ece6dc; border-radius: 22px; gap: 14px;
+    box-shadow: 0 8px 24px -8px rgba(0,0,0,0.25),
+                0 1px 2px rgba(0,0,0,0.1),
+                inset 0 0 0 1px rgba(0,0,0,0.03);
+    color: #3a3a38;
+  }
+  body.theme-fog .dot { width: 5px; height: 5px; background: #c94a4a; }
+  body.theme-fog .wave { height: 16px; gap: 3px; }
+  body.theme-fog .wave span { width: 2px; background: #5a6b7e; opacity: 0.75; }
+  body.theme-fog .timer { color: #8a8985; }
+
+  /* ─── Ink ───────────────────────────────────────────────────── */
+  body.theme-ink .overlay {
+    width: 320px; height: 44px; padding: 0 22px;
+    background: #15151a;
+    border: 1px solid rgba(232,224,208,0.08);
+    border-radius: 22px; gap: 14px; color: #e8e0d0;
+    box-shadow: 0 8px 24px -6px rgba(0,0,0,0.6);
+  }
+  body.theme-ink .dot { width: 5px; height: 5px; background: #c9b88a; }
+  body.theme-ink .wave { height: 18px; gap: 3px; }
+  body.theme-ink .wave span { width: 1.5px; background: #c9b88a; }
+  body.theme-ink .timer { color: #6a6a65; }
+
+  /* ─── Glass Black ───────────────────────────────────────────── */
+  body.theme-glass-black .overlay {
+    width: 320px; padding: 10px 18px;
+    background: rgba(18,18,22,0.55);
+    backdrop-filter: blur(22px) saturate(1.4);
+    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 28px; gap: 12px;
+    color: rgba(255,255,255,0.92);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  body.theme-glass-black .dot { width: 6px; height: 6px; background: #ef4444; }
+  body.theme-glass-black .wave { height: 22px; gap: 3px; }
+  body.theme-glass-black .wave span { width: 2px; background: rgba(255,255,255,0.85); }
+
+  /* ─── Neon ──────────────────────────────────────────────────── */
+  body.theme-neon .overlay {
+    width: 320px; padding: 10px 18px;
+    background: linear-gradient(135deg, #050010 0%, #0a0014 100%);
+    border: 1px solid rgba(255,0,200,0.4);
+    border-radius: 28px; gap: 12px; color: #00ffff;
+    box-shadow: 0 0 24px rgba(255,0,200,0.25),
+                0 0 60px rgba(0,255,255,0.08);
+  }
+  body.theme-neon .dot { width: 6px; height: 6px; background: #ff00c8;
+    box-shadow: 0 0 12px #ff00c8; }
+  body.theme-neon .wave { height: 22px; gap: 3px; }
+  body.theme-neon .wave span { width: 2px;
+    background: linear-gradient(180deg, #00ffff 0%, #ff00c8 100%);
+    box-shadow: 0 0 6px rgba(0,255,255,0.4); }
+  body.theme-neon .timer { color: #00ffff;
+    text-shadow: 0 0 8px rgba(0,255,255,0.6); }
+
+  /* ─── Arc Card ──────────────────────────────────────────────── */
+  body.theme-arc-card .overlay {
+    width: 300px; padding: 14px 18px;
+    background: white; border-radius: 16px; gap: 12px;
+    font-family: -apple-system, "SF Pro Rounded", sans-serif;
+    font-weight: 500; color: #1c1c1e;
+    box-shadow: 0 20px 40px -10px rgba(0,0,0,0.3),
+                0 2px 6px rgba(0,0,0,0.1);
+    border: 1px solid rgba(255,165,0,0.3);
+  }
+  body.theme-arc-card .dot { width: 6px; height: 6px; background: #ff3b30; }
+  body.theme-arc-card .wave { height: 22px; gap: 3px; }
+  body.theme-arc-card .wave span { width: 2px;
+    background: linear-gradient(180deg, #ff9500 0%, #ff2d55 100%); }
+  body.theme-arc-card .timer { color: #6b7280; }
+</style>
+</head>
+<body class="theme-liquid">
+  <div class="overlay">
+    <div class="dot"></div>
+    <div class="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="timer">0:00</div>
+    <div class="transcript"></div>
+  </div>
+<script>
+  // Lua ↔ JS bridge. Lua calls these via overlay:evaluateJavaScript("lw.foo(...)").
+  window.lw = {
+    setTheme(t) {
+      const valid = ["liquid","editorial","fog","ink","glass-black","neon","arc-card"];
+      if (!valid.includes(t)) t = "liquid";
+      document.body.className = "theme-" + t;
+      if (document.body.dataset.recording === "1") document.body.classList.add("recording");
+      if (document.body.dataset.hasTranscript === "1") document.body.classList.add("has-transcript");
+    },
+    setRecording(on) {
+      document.body.dataset.recording = on ? "1" : "0";
+      document.body.classList.toggle("recording", !!on);
+      if (on) {
+        document.body.classList.remove("has-transcript");
+        document.body.dataset.hasTranscript = "0";
+        document.querySelector(".transcript").textContent = "";
+      }
+    },
+    setTimer(txt) {
+      document.querySelector(".timer").textContent = txt || "0:00";
+    },
+    setTranscript(txt) {
+      const el = document.querySelector(".transcript");
+      el.textContent = txt || "";
+      const has = !!txt;
+      document.body.classList.toggle("has-transcript", has);
+      document.body.dataset.hasTranscript = has ? "1" : "0";
+    },
+  };
+</script>
+</body>
+</html>

@@ -16,6 +16,11 @@ fi
 cp "$HAMMERSPOON_DIR/init.lua" "$REPO_DIR/hammerspoon/init.lua"
 echo "[+] init.lua → repo"
 
+if [[ -f "$HAMMERSPOON_DIR/overlay.html" ]]; then
+    cp "$HAMMERSPOON_DIR/overlay.html" "$REPO_DIR/hammerspoon/overlay.html"
+    echo "[+] overlay.html → repo"
+fi
+
 # Only overwrite the example file if user's copy has diverged meaningfully.
 # Prevents clobbering the upstream default voice commands with a personal set
 # unless explicitly intended.

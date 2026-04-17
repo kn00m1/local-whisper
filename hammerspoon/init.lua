@@ -650,107 +650,67 @@ function WhisperActions.reload()
 end
 
 --------------------------------------------------------------------------------
--- Overlay UI
+-- Overlay UI (hs.webview — HTML/CSS/JS)
 --------------------------------------------------------------------------------
+-- All visuals live in ~/.hammerspoon/overlay.html. This Lua module only:
+--  (1) creates/positions the webview, (2) pushes state via evaluateJavaScript.
+-- Theme switching is just a body class change on the JS side.
 
--- Theme palettes. Switch live via menu bar → Theme submenu; persists in ~/.local-whisper/theme.
-local THEMES = {
-    classic = {
-        bg        = { red = 0.10, green = 0.10, blue = 0.10, alpha = 0.85 },
-        bgPinned  = { red = 0.15, green = 0.15, blue = 0.20, alpha = 0.92 },
-        btn       = { red = 0.50, green = 0.80, blue = 1.00, alpha = 1.00 },
-        btnHover  = { red = 0.70, green = 0.90, blue = 1.00, alpha = 1.00 },
-        sep       = { red = 0.40, green = 0.40, blue = 0.40, alpha = 1.00 },
-        enterOn   = { red = 0.30, green = 1.00, blue = 0.30, alpha = 1.00 },
-        enterOff  = { red = 0.50, green = 0.50, blue = 0.50, alpha = 0.50 },
-        refineOn  = { red = 0.40, green = 0.80, blue = 1.00, alpha = 1.00 },
-        refineOff = { red = 0.50, green = 0.50, blue = 0.50, alpha = 0.50 },
-        text      = { red = 1.00, green = 1.00, blue = 1.00, alpha = 1.00 },
-        dot       = { red = 1.00, green = 0.15, blue = 0.15 },   -- alpha set dynamically
-        timer     = { red = 1.00, green = 0.40, blue = 0.40 },
-    },
-    neon = {
-        bg        = { red = 0.02, green = 0.01, blue = 0.05, alpha = 0.92 },
-        bgPinned  = { red = 0.05, green = 0.01, blue = 0.10, alpha = 0.95 },
-        btn       = { red = 0.00, green = 1.00, blue = 1.00, alpha = 1.00 },  -- cyan
-        btnHover  = { red = 0.40, green = 1.00, blue = 1.00, alpha = 1.00 },
-        sep       = { red = 0.25, green = 0.20, blue = 0.40, alpha = 1.00 },
-        enterOn   = { red = 0.40, green = 1.00, blue = 0.20, alpha = 1.00 },  -- electric green
-        enterOff  = { red = 0.30, green = 0.25, blue = 0.40, alpha = 0.50 },
-        refineOn  = { red = 1.00, green = 0.20, blue = 0.90, alpha = 1.00 },  -- magenta
-        refineOff = { red = 0.30, green = 0.25, blue = 0.40, alpha = 0.50 },
-        text      = { red = 0.80, green = 1.00, blue = 1.00, alpha = 1.00 },  -- pale cyan
-        dot       = { red = 1.00, green = 0.00, blue = 0.55 },  -- hot pink
-        timer     = { red = 1.00, green = 0.30, blue = 0.75 },
-    },
-    tokyo = {
-        bg        = { red = 0.10, green = 0.11, blue = 0.16, alpha = 0.92 },  -- Tokyo Night bg
-        bgPinned  = { red = 0.13, green = 0.14, blue = 0.20, alpha = 0.95 },
-        btn       = { red = 0.48, green = 0.68, blue = 0.95, alpha = 1.00 },  -- soft blue
-        btnHover  = { red = 0.60, green = 0.78, blue = 1.00, alpha = 1.00 },
-        sep       = { red = 0.35, green = 0.38, blue = 0.45, alpha = 1.00 },
-        enterOn   = { red = 0.62, green = 0.85, blue = 0.55, alpha = 1.00 },  -- mint
-        enterOff  = { red = 0.40, green = 0.42, blue = 0.50, alpha = 0.50 },
-        refineOn  = { red = 0.73, green = 0.55, blue = 0.95, alpha = 1.00 },  -- purple
-        refineOff = { red = 0.40, green = 0.42, blue = 0.50, alpha = 0.50 },
-        text      = { red = 0.78, green = 0.82, blue = 0.90, alpha = 1.00 },
-        dot       = { red = 0.95, green = 0.47, blue = 0.54 },  -- salmon
-        timer     = { red = 0.95, green = 0.65, blue = 0.70 },
-    },
-}
+local AVAILABLE_THEMES = { "liquid", "editorial", "fog", "ink", "glass-black", "neon", "arc-card" }
+local DEFAULT_THEME = "liquid"
+
+-- Read HTML template once at load. Shared across all overlay instances.
+local OVERLAY_HTML_PATH = HOME .. "/.hammerspoon/overlay.html"
+local OVERLAY_HTML = nil
+do
+    local f = io.open(OVERLAY_HTML_PATH, "r")
+    if f then OVERLAY_HTML = f:read("*a"); f:close() end
+    if not OVERLAY_HTML or OVERLAY_HTML == "" then
+        log("overlay: WARNING — " .. OVERLAY_HTML_PATH .. " missing or empty; using fallback stub")
+        OVERLAY_HTML = "<html><body style='background:#222;color:#fff;font:12px sans-serif;padding:12px'>overlay.html missing</body></html>"
+    end
+end
 
 local function getTheme()
     local f = io.open(THEME_FILE, "r")
     if f then
         local v = f:read("*a"):gsub("%s+", ""); f:close()
-        if THEMES[v] then return v, THEMES[v] end
+        for _, t in ipairs(AVAILABLE_THEMES) do
+            if t == v then return v end
+        end
     end
-    return "classic", THEMES.classic
+    return DEFAULT_THEME
 end
 
 local function setTheme(name)
-    if THEMES[name] then writeFile(THEME_FILE, name); hs.reload() end
+    for _, t in ipairs(AVAILABLE_THEMES) do
+        if t == name then writeFile(THEME_FILE, name); hs.reload(); return end
+    end
 end
 
-local _themeName, THEME = getTheme()
+local overlay = nil  -- hs.webview instance
 
--- Compose a theme color with a runtime alpha (for pulse animation etc).
-local function themeColor(c, a)
-    return { red = c.red, green = c.green, blue = c.blue, alpha = a == nil and (c.alpha or 1) or a }
+-- Lua → JS bridge. Safe against missing overlay.
+local function jsEval(code)
+    if overlay and overlay.evaluateJavaScript then overlay:evaluateJavaScript(code) end
 end
 
-local overlay = nil
-local btnColor = THEME.btn
-local btnHover = THEME.btnHover
-
--- Element indices:
---   1=bg, 2..10=legacy status chrome (hidden by default), 11=text, 12=dot, 13=timer, 14=close
---   15..30=waveform bars (16 bars)
-local EL = { lang = 2, output = 4, enter = 6, model = 8, refine = 10, text = 11, dot = 12, timer = 13, close = 14 }
-local BARS_COUNT = 16
-local BARS_START = 15  -- element index of first bar
-
-local enterOnColor   = THEME.enterOn
-local enterOffColor  = THEME.enterOff
-local refineOnColor  = THEME.refineOn
-local refineOffColor = THEME.refineOff
-
-local function refreshOverlayLabels()
-    if not overlay then return end
-    overlay[EL.lang].text = getLang():upper()
-    overlay[EL.output].text = getOutputMode():upper()
-    overlay[EL.enter].text = "⏎"
-    overlay[EL.enter].textColor = getEnterMode() and enterOnColor or enterOffColor
-    overlay[EL.model].text = getModelName()
-    local refineOn = getRefineMode() and hasOllama()
-    overlay[EL.refine].text = refineOn and "refine ✓" or "refine ✗"
-    overlay[EL.refine].textColor = refineOn and refineOnColor or refineOffColor
+-- Escape a string for single-quoted JS literal.
+local function jsStr(s)
+    return (s or ""):gsub("\\", "\\\\"):gsub("'", "\\'"):gsub("\n", "\\n"):gsub("\r", "")
 end
+
+-- No-op shims: the old canvas API had these; callers still invoke them.
+local function refreshOverlayLabels() end
+local function setOverlayStatus() end
+
+-- Fixed webview viewport. All themes are smaller than this and centered via CSS.
+local OVERLAY_W = 380
+local OVERLAY_H = 80
 
 local function createOverlay()
-    local width, height = 320, 48  -- pill shape, SuperWhisper-inspired
     local cursor = hs.mouse.absolutePosition()
-    -- Pick the screen containing the cursor (works with multi-monitor).
+    -- Pick the screen containing the cursor (multi-monitor).
     local screen = hs.screen.mainScreen()
     for _, s in ipairs(hs.screen.allScreens()) do
         local f = s:frame()
@@ -762,162 +722,26 @@ local function createOverlay()
     end
     local frame = screen:frame()
     local offset = 30
-    -- Anchor the overlay corner opposite to the cursor quadrant so it expands into free space.
     local x = (cursor.x < frame.x + frame.w / 2)
         and (cursor.x + offset)
-        or  (cursor.x - width - offset)
+        or  (cursor.x - OVERLAY_W - offset)
     local y = (cursor.y < frame.y + frame.h / 2)
         and (cursor.y + offset)
-        or  (cursor.y - height - offset)
-    -- Clamp to screen edges (10px margin).
-    x = math.max(frame.x + 10, math.min(x, frame.x + frame.w - width - 10))
-    y = math.max(frame.y + 10, math.min(y, frame.y + frame.h - height - 10))
+        or  (cursor.y - OVERLAY_H - offset)
+    x = math.max(frame.x + 10, math.min(x, frame.x + frame.w - OVERLAY_W - 10))
+    y = math.max(frame.y + 10, math.min(y, frame.y + frame.h - OVERLAY_H - 10))
 
-    overlay = hs.canvas.new({ x = x, y = y, w = width, h = height })
-
-    local pillRadius = height / 2  -- full-pill rounded corners
-
-    -- 1: Background pill (click to pin/close via overlayPinned flag)
-    overlay:appendElements({
-        id = "bg",
-        type = "rectangle", action = "fill",
-        roundedRectRadii = { xRadius = pillRadius, yRadius = pillRadius },
-        fillColor = THEME.bg,
-        trackMouseUp = true,
-    })
-
-    -- Elements 2-10: legacy status chrome, kept invisible (alpha=0) so existing code paths don't crash.
-    local hidden = { red = 0, green = 0, blue = 0, alpha = 0 }
-    for _ = 2, 10 do
-        overlay:appendElements({ type = "text", text = "", textColor = hidden,
-            textSize = 1, frame = { x = "0%", y = "0%", w = "1%", h = "1%" } })
-    end
-
-    -- 11: Transcript text (hidden during recording; shown when final text arrives).
-    --     Kept as single-line inside the pill; long text just clips.
-    overlay:appendElements({
-        id = "text", type = "text", text = "",
-        textColor = THEME.text,
-        textSize = 13,
-        frame = { x = "14%", y = "25%", w = "70%", h = "50%" },
-        textAlignment = "center",
-    })
-
-    -- 12: Recording indicator (pulsing dot) — fixed left position.
-    overlay:appendElements({
-        id = "dot", type = "oval", action = "fill",
-        fillColor = themeColor(THEME.dot, 0.0),
-        frame = { x = 14, y = 20, w = 8, h = 8 },
-    })
-
-    -- 13: Elapsed timer — fixed right position.
-    overlay:appendElements({
-        id = "timer", type = "text", text = "",
-        textColor = themeColor(THEME.timer, 0.0),
-        textSize = 11,
-        frame = { x = width - 60, y = 16, w = 50, h = 18 },
-        textAlignment = "right",
-    })
-
-    -- 14: Close X (hidden by default — emergency stop is in the menu bar).
-    overlay:appendElements({
-        id = "close", type = "text", text = "",
-        textColor = hidden,
-        textSize = 1,
-        frame = { x = "0%", y = "0%", w = "1%", h = "1%" },
-        trackMouseDown = true, trackMouseUp = true, trackMouseEnterExit = true,
-    })
-
-    -- 15..30: 16 waveform bars, centered horizontally.
-    -- Bar: 4px wide, 3px gap → 16*4 + 15*3 = 109px total width.
-    -- Centered at (width-109)/2 = ~105. Vertical center at height/2 = 24.
-    local barWidth = 4
-    local barGap = 3
-    local barsTotalWidth = BARS_COUNT * barWidth + (BARS_COUNT - 1) * barGap
-    local barsStartX = math.floor((width - barsTotalWidth) / 2)
-    for i = 0, BARS_COUNT - 1 do
-        overlay:appendElements({
-            id = "bar" .. i, type = "rectangle", action = "fill",
-            roundedRectRadii = { xRadius = 1.5, yRadius = 1.5 },
-            fillColor = themeColor(THEME.btn, 0.35),  -- dim when idle
-            frame = { x = barsStartX + i * (barWidth + barGap), y = 22, w = barWidth, h = 4 },
-        })
-    end
-
+    overlay = hs.webview.new({ x = x, y = y, w = OVERLAY_W, h = OVERLAY_H })
+    overlay:windowStyle({ "borderless", "closable" })  -- no title bar
     overlay:level(hs.canvas.windowLevels.floating)
     overlay:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
+    overlay:allowTextEntry(false)
+    overlay:transparent(true)
+    overlay:html(OVERLAY_HTML)
 
-    -- Map string IDs to numeric indices for element access
-    local idMap = { bg = 1, lang = EL.lang, output = EL.output, enter = EL.enter, model = EL.model, refine = EL.refine, close = EL.close }
-
-    -- Mouse handler: click bg to pin, click labels to cycle settings, X to close
-    overlay:canvasMouseEvents(true, true, true, false)  -- mouseDown + mouseUp + enterExit
-    overlay:mouseCallback(function(canvas, event, id, mx, my)
-        -- Close button — hide immediately, delete deferred
-        if id == "close" then
-            if event == "mouseDown" then
-                log("overlay: X close")
-                canvas:hide()
-                hs.timer.doAfter(0.01, function()
-                    overlayPinned = false
-                    if isRecording then
-                        emergencyStop()
-                    else
-                        if overlay then overlay:delete(); overlay = nil end
-                    end
-                end)
-            end
-            return
-        end
-
-        if event == "mouseUp" then
-            if id == "bg" then
-                overlayPinned = not overlayPinned
-                if overlayPinned then
-                    canvas[1].fillColor = THEME.bgPinned
-                    log("overlay pinned")
-                else
-                    canvas[1].fillColor = THEME.bg
-                    log("overlay unpinned")
-                    if not isRecording then hideOverlay() end
-                end
-                return
-            end
-
-            if id == "lang" then cycleLang()
-            elseif id == "output" then cycleOutput()
-            elseif id == "enter" then cycleEnter()
-            elseif id == "model" then cycleModel()
-            elseif id == "refine" then cycleRefine()
-            end
-            refreshOverlayLabels()
-
-        elseif event == "mouseEnter" then
-            local idx = idMap[id]
-            if not idx or id == "bg" then return end
-            if id == "close" then
-                canvas[idx].textColor = { red = 1, green = 0.3, blue = 0.3, alpha = 1 }
-            elseif id == "enter" then
-                canvas[idx].textColor = enterOnColor
-            elseif id == "refine" then
-                canvas[idx].textColor = refineOnColor
-            else
-                canvas[idx].textColor = btnHover
-            end
-
-        elseif event == "mouseExit" then
-            local idx = idMap[id]
-            if not idx or id == "bg" then return end
-            if id == "close" then
-                canvas[idx].textColor = { red = 1, green = 1, blue = 1, alpha = 0.5 }
-            elseif id == "enter" then
-                canvas[idx].textColor = getEnterMode() and enterOnColor or enterOffColor
-            elseif id == "refine" then
-                canvas[idx].textColor = (getRefineMode() and hasOllama()) and refineOnColor or refineOffColor
-            else
-                canvas[idx].textColor = btnColor
-            end
-        end
+    -- Apply current theme (runs after the document is ready; WKWebView queues early calls).
+    hs.timer.doAfter(0.05, function()
+        jsEval("lw.setTheme('" .. jsStr(getTheme()) .. "')")
     end)
 end
 
@@ -929,7 +753,7 @@ local function showOverlay()
 end
 
 local function hideOverlay()
-    if overlayPinned then return end  -- pinned overlay stays open
+    if overlayPinned then return end
     if overlay then overlay:delete(); overlay = nil end
 end
 
@@ -939,11 +763,7 @@ local function forceHideOverlay()
 end
 
 local function setOverlayText(text)
-    if overlay then overlay[EL.text].text = text end
-end
-
-local function setOverlayStatus()
-    refreshOverlayLabels()
+    jsEval("lw.setTranscript('" .. jsStr(text) .. "')")
 end
 
 --------------------------------------------------------------------------------
@@ -1094,18 +914,18 @@ local function buildMenuBarMenu()
         })
     end
 
-    -- Theme picker (submenu)
+    -- Theme picker (submenu) — 7 webview themes
     do
-        local themeNames = { "classic", "neon", "tokyo" }
+        local current = getTheme()
         local submenu = {}
-        for _, name in ipairs(themeNames) do
+        for _, name in ipairs(AVAILABLE_THEMES) do
             table.insert(submenu, {
                 title = name,
-                checked = name == _themeName,
+                checked = name == current,
                 fn = function() setTheme(name) end,
             })
         end
-        table.insert(items, { title = "Theme: " .. _themeName, menu = submenu })
+        table.insert(items, { title = "Theme: " .. current, menu = submenu })
     end
 
     -- Output mode
@@ -1162,14 +982,9 @@ local function buildMenuBarMenu()
     table.insert(items, {
         title = "Settings...",
         fn = function()
-            if overlay then
-                forceHideOverlay()
-            else
-                showOverlay()
-                overlayPinned = true
-                overlay[1].fillColor = THEME.bgPinned
-                setOverlayText("Click labels to change settings")
-            end
+            -- Settings chrome lives in the menu bar now; this is a no-op placeholder.
+            -- Kept for menu parity with upstream.
+            hs.notify.new({ title = "local-whisper", informativeText = "Settings available in this menu." }):send()
         end,
     })
 
@@ -1232,68 +1047,24 @@ end
 local function startRecordingIndicator()
     if not overlay then return end
     recordingStartTime = hs.timer.secondsSinceEpoch()
-    pulseAlpha = 1.0
-    pulseFading = true
 
-    -- Show dot and timer
-    overlay[EL.dot].fillColor = themeColor(THEME.dot, 1.0)
-    overlay[EL.timer].textColor = themeColor(THEME.timer, 1.0)
+    -- CSS drives the dot pulse + waveform animation; we just flip the body class.
+    jsEval("lw.setRecording(true); lw.setTimer('0:00')")
 
-    -- Pulse the red dot + animate waveform bars
-    local barPhase = 0
-    pulseTimer = hs.timer.doEvery(0.05, function()
-        if not overlay then return end
-        if pulseFading then
-            pulseAlpha = pulseAlpha - 0.03
-            if pulseAlpha <= 0.2 then pulseFading = false end
-        else
-            pulseAlpha = pulseAlpha + 0.03
-            if pulseAlpha >= 1.0 then pulseFading = true end
-        end
-        overlay[EL.dot].fillColor = themeColor(THEME.dot, pulseAlpha)
-
-        -- Stylized waveform: combine a slow sine wave (for rhythm) with per-bar noise.
-        barPhase = barPhase + 0.25
-        for i = 0, BARS_COUNT - 1 do
-            local t = barPhase + i * 0.4
-            local wave = (math.sin(t) + 1) * 0.5                 -- 0..1
-            local noise = math.random() * 0.5 + 0.5              -- 0.5..1
-            local amp = wave * noise                             -- 0..1
-            local maxH = 30
-            local h = math.max(3, math.floor(amp * maxH))
-            local y = math.floor(24 - h / 2)
-            local el = overlay[BARS_START + i]
-            el.frame = { x = el.frame.x, y = y, w = el.frame.w, h = h }
-            el.fillColor = themeColor(THEME.btn, 0.6 + amp * 0.4)
-        end
-    end)
-
-    -- Update elapsed time every second
+    -- Lua ticks the timer once per second.
     clockTimer = hs.timer.doEvery(1, function()
         if not overlay then return end
         local elapsed = math.floor(hs.timer.secondsSinceEpoch() - recordingStartTime)
         local min = math.floor(elapsed / 60)
         local sec = elapsed % 60
-        overlay[EL.timer].text = string.format("%d:%02d", min, sec)
+        jsEval(string.format("lw.setTimer('%d:%02d')", min, sec))
     end)
 end
 
 local function stopRecordingIndicator()
-    if pulseTimer then pulseTimer:stop(); pulseTimer = nil end
+    if pulseTimer then pulseTimer:stop(); pulseTimer = nil end  -- legacy (unused now)
     if clockTimer then clockTimer:stop(); clockTimer = nil end
-    if overlay then
-        overlay[EL.dot].fillColor = themeColor(THEME.dot, 0.0)
-        overlay[EL.timer].textColor = themeColor(THEME.timer, 0.0)
-        overlay[EL.timer].text = ""
-        -- Flatten bars to idle (low, dim)
-        for i = 0, BARS_COUNT - 1 do
-            local el = overlay[BARS_START + i]
-            if el then
-                el.frame = { x = el.frame.x, y = 22, w = el.frame.w, h = 4 }
-                el.fillColor = themeColor(THEME.btn, 0.2)
-            end
-        end
-    end
+    jsEval("lw.setRecording(false)")
 end
 
 --------------------------------------------------------------------------------

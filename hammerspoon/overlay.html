@@ -26,7 +26,6 @@
     border-radius: 50%; flex: 0 0 auto;
     animation: pulseDot 1.6s ease-in-out infinite;
   }
-  body:not(.recording) .dot { animation: none; opacity: 0; }
   @keyframes pulseDot {
     0%, 100% { opacity: 0.95; transform: scale(1); }
     50% { opacity: 0.4; transform: scale(0.8); }
@@ -34,9 +33,13 @@
   .wave { display: flex; align-items: center; flex: 1 1 auto; justify-content: center; }
   .wave span {
     border-radius: 1px;
-    animation: waveBar 1.2s ease-in-out infinite;
+    height: 20%;
+    animation: waveBar 1.1s ease-in-out infinite;
   }
-  body:not(.recording) .wave span { animation: none; height: 15% !important; opacity: 0.3; }
+  /* Overlay visible = recording in progress. Bars always dance.
+     When transcript is shown (post-recording), we hide bars + dot. */
+  body.has-transcript .dot,
+  body.has-transcript .wave { display: none; }
   .wave span:nth-child(1)  { animation-delay: -0.00s; }
   .wave span:nth-child(2)  { animation-delay: -0.07s; }
   .wave span:nth-child(3)  { animation-delay: -0.14s; }
@@ -58,10 +61,13 @@
   .wave span:nth-child(19) { animation-delay: -1.26s; }
   .wave span:nth-child(20) { animation-delay: -1.33s; }
   @keyframes waveBar {
-    0%, 100% { height: 15%; opacity: 0.45; }
-    25%  { height: 85%; opacity: 1; }
-    50%  { height: 30%; opacity: 0.6; }
-    75%  { height: 65%; opacity: 0.9; }
+    0%, 100% { height: 12%; opacity: 0.5; }
+    15%  { height: 95%; opacity: 1; }
+    30%  { height: 28%; opacity: 0.7; }
+    45%  { height: 80%; opacity: 1; }
+    60%  { height: 35%; opacity: 0.75; }
+    75%  { height: 90%; opacity: 1; }
+    90%  { height: 20%; opacity: 0.6; }
   }
   .timer {
     font-family: "SF Mono", "JetBrains Mono", monospace;
@@ -90,18 +96,22 @@
   body.theme-liquid .overlay {
     width: 320px; height: 48px;
     padding: 0 22px;
-    background: rgba(255,255,255,0.14);
-    backdrop-filter: blur(40px) saturate(1.8) brightness(1.08);
-    -webkit-backdrop-filter: blur(40px) saturate(1.8) brightness(1.08);
+    /* Dark tint behind the glass so white contents stay legible over ANY backdrop
+       (light wallpaper, light browser window, etc). Without this the white
+       text/bars vanish on light backgrounds. */
+    background: rgba(20, 20, 28, 0.38);
+    backdrop-filter: blur(40px) saturate(1.8) brightness(0.95);
+    -webkit-backdrop-filter: blur(40px) saturate(1.8) brightness(0.95);
     border-radius: 24px;
     gap: 14px;
     color: #fdfdfc;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);  /* contrast halo */
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.5),
-      inset 0 -1px 0 rgba(0,0,0,0.12),
-      0 0 0 0.5px rgba(0,0,0,0.25),
-      0 16px 40px -12px rgba(0,0,0,0.4),
-      0 2px 6px -2px rgba(0,0,0,0.3);
+      inset 0 1px 0 rgba(255,255,255,0.35),
+      inset 0 -1px 0 rgba(0,0,0,0.2),
+      0 0 0 0.5px rgba(0,0,0,0.35),
+      0 16px 40px -12px rgba(0,0,0,0.45),
+      0 2px 6px -2px rgba(0,0,0,0.35);
     overflow: hidden;
   }
   body.theme-liquid .overlay::before {
@@ -237,19 +247,10 @@
 <script>
   // Lua ↔ JS bridge. Lua calls these via overlay:evaluateJavaScript("lw.foo(...)").
   window.lw = {
-    setTheme(t) {
-      const valid = ["liquid","editorial","fog","ink","glass-black","neon","arc-card"];
-      if (!valid.includes(t)) t = "liquid";
-      document.body.className = "theme-" + t;
-      if (document.body.dataset.recording === "1") document.body.classList.add("recording");
-      if (document.body.dataset.hasTranscript === "1") document.body.classList.add("has-transcript");
-    },
     setRecording(on) {
-      document.body.dataset.recording = on ? "1" : "0";
       document.body.classList.toggle("recording", !!on);
       if (on) {
         document.body.classList.remove("has-transcript");
-        document.body.dataset.hasTranscript = "0";
         document.querySelector(".transcript").textContent = "";
       }
     },
@@ -259,9 +260,7 @@
     setTranscript(txt) {
       const el = document.querySelector(".transcript");
       el.textContent = txt || "";
-      const has = !!txt;
-      document.body.classList.toggle("has-transcript", has);
-      document.body.dataset.hasTranscript = has ? "1" : "0";
+      document.body.classList.toggle("has-transcript", !!txt);
     },
   };
 </script>

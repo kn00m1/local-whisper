@@ -731,18 +731,22 @@ local function createOverlay()
     x = math.max(frame.x + 10, math.min(x, frame.x + frame.w - OVERLAY_W - 10))
     y = math.max(frame.y + 10, math.min(y, frame.y + frame.h - OVERLAY_H - 10))
 
-    overlay = hs.webview.new({ x = x, y = y, w = OVERLAY_W, h = OVERLAY_H })
-    overlay:windowStyle({ "borderless", "closable" })  -- no title bar
+    overlay = hs.webview.new({ x = x, y = y, w = OVERLAY_W, h = OVERLAY_H },
+        { developerExtrasEnabled = true })
+    overlay:windowStyle({ "borderless" })
     overlay:level(hs.canvas.windowLevels.floating)
     overlay:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
     overlay:allowTextEntry(false)
     overlay:transparent(true)
-    overlay:html(OVERLAY_HTML)
+    overlay:shadow(false)
 
-    -- Apply current theme (runs after the document is ready; WKWebView queues early calls).
-    hs.timer.doAfter(0.05, function()
-        jsEval("lw.setTheme('" .. jsStr(getTheme()) .. "')")
-    end)
+    -- Bake the current theme + recording state into the HTML *before* load so the
+    -- overlay renders correctly the instant WKWebView parses it (avoids a race
+    -- where evaluateJavaScript fires before DOM-ready).
+    local classes = "theme-" .. getTheme()
+    if isRecording then classes = classes .. " recording" end
+    local html = OVERLAY_HTML:gsub('body class="theme%-liquid"', 'body class="' .. classes .. '"', 1)
+    overlay:html(html)
 end
 
 local function showOverlay()
@@ -750,6 +754,7 @@ local function showOverlay()
     if overlay then overlay:delete() end
     createOverlay()
     overlay:show()
+    overlay:bringToFront(true)
 end
 
 local function hideOverlay()
@@ -790,18 +795,22 @@ local pulseFading = true
 -- Undo state
 local lastInsertedText = nil
 
--- Recent dictations (newest first, max 10)
-local MAX_RECENT = 10
+-- Dictation history (newest first, persisted to ~/.local-whisper/history.json).
+-- Replaces the previous "recent.json" 10-entry cap. Entries: {text, time, inserted, app, model, chars}.
+local MAX_RECENT = 500
+local HISTORY_FILE = CONFIG_DIR .. "/history.json"
 
 local recentDictations = {}
 
 local function loadRecentDictations()
-    local f = io.open(RECENT_FILE, "r")
+    -- Primary: history.json
+    local f = io.open(HISTORY_FILE, "r")
+    -- Migration fallback: one-time bootstrap from legacy recent.json
+    if not f then f = io.open(RECENT_FILE, "r") end
     if not f then return end
     local data = f:read("*a"); f:close()
     local ok, result = pcall(hs.json.decode, data)
     if ok and type(result) == "table" then
-        -- Clear and populate in-place (preserve table reference)
         for i = #recentDictations, 1, -1 do recentDictations[i] = nil end
         for i, entry in ipairs(result) do recentDictations[i] = entry end
     end
@@ -810,11 +819,129 @@ end
 local function saveRecentDictations()
     local ok, json = pcall(hs.json.encode, recentDictations)
     if not ok then return end
-    local f = io.open(RECENT_FILE, "w")
+    local f = io.open(HISTORY_FILE, "w")
     if f then f:write(json); f:close() end
 end
 
 loadRecentDictations()
+
+--------------------------------------------------------------------------------
+-- History Dashboard (hs.webview)
+--------------------------------------------------------------------------------
+
+local DASHBOARD_HTML_PATH = HOME .. "/.hammerspoon/dashboard.html"
+local DASHBOARD_HTML = nil
+do
+    local f = io.open(DASHBOARD_HTML_PATH, "r")
+    if f then DASHBOARD_HTML = f:read("*a"); f:close() end
+    if not DASHBOARD_HTML or DASHBOARD_HTML == "" then
+        log("dashboard: WARNING — dashboard.html missing")
+        DASHBOARD_HTML = "<html><body style='background:#222;color:#fff;font:13px sans-serif;padding:20px'>dashboard.html missing</body></html>"
+    end
+end
+
+local dashboard = nil
+local dashboardPrevApp = nil  -- track the app focused before we opened the dashboard
+
+local function pushHistoryToDashboard()
+    if not dashboard then return end
+    local ok, json = pcall(hs.json.encode, recentDictations)
+    if not ok then return end
+    -- Escape for JS single-quote string
+    local esc = json:gsub("\\", "\\\\"):gsub("'", "\\'"):gsub("\n", "\\n"):gsub("\r", "")
+    dashboard:evaluateJavaScript("lw.load('" .. esc .. "')")
+end
+
+local function openDashboard()
+    if dashboard then dashboard:bringToFront(true); return end
+
+    -- Remember focus so "paste" can restore the previous app.
+    local fa = hs.application.frontmostApplication()
+    dashboardPrevApp = fa and fa:bundleID() or nil
+
+    local screen = hs.screen.mainScreen():frame()
+    local w, h = 820, 600
+    local x = screen.x + (screen.w - w) / 2
+    local y = screen.y + (screen.h - h) / 2
+
+    local controller = hs.webview.usercontent.new("lw")
+    controller:setCallback(function(msg)
+        local body = msg and msg.body
+        if type(body) ~= "table" then return end
+        local action = body.action
+
+        if action == "ready" then
+            pushHistoryToDashboard()
+
+        elseif action == "copy" then
+            if body.text then hs.pasteboard.setContents(body.text) end
+
+        elseif action == "paste" then
+            if not body.text then return end
+            hs.pasteboard.setContents(body.text)
+            -- Close dashboard, restore previous app, then synthesize Cmd+V.
+            if dashboard then dashboard:delete(); dashboard = nil end
+            hs.timer.doAfter(0.05, function()
+                if dashboardPrevApp then
+                    local app = hs.application.applicationsForBundleID(dashboardPrevApp)[1]
+                    if app then app:activate() end
+                end
+                hs.timer.doAfter(0.1, function()
+                    hs.eventtap.keyStroke({"cmd"}, "v")
+                end)
+            end)
+
+        elseif action == "delete" then
+            -- Delete by timestamp (stable across filters)
+            local time = body.time
+            for i, entry in ipairs(recentDictations) do
+                if entry.time == time then
+                    table.remove(recentDictations, i)
+                    break
+                end
+            end
+            saveRecentDictations()
+            pushHistoryToDashboard()
+
+        elseif action == "export" then
+            local path = os.getenv("HOME") .. "/Downloads/local-whisper-history-"
+                .. os.date("%Y%m%d-%H%M%S") .. ".md"
+            local f = io.open(path, "w")
+            if not f then return end
+            f:write("# local-whisper dictation history\n\n")
+            f:write("Exported " .. os.date("%Y-%m-%d %H:%M:%S") .. " — " .. #recentDictations .. " entries\n\n")
+            for _, e in ipairs(recentDictations) do
+                local ts = os.date("%Y-%m-%d %H:%M", e.time)
+                f:write("## " .. ts .. "  ·  " .. (e.app or "?") .. "  ·  " .. (e.model or "?") .. "\n\n")
+                if e.refined and e.refined ~= e.text then
+                    f:write("**Refined:** " .. e.refined .. "\n\n")
+                    f:write("**Raw:** " .. (e.text or "") .. "\n\n")
+                else
+                    f:write((e.text or "") .. "\n\n")
+                end
+            end
+            f:close()
+            log("dashboard: exported " .. #recentDictations .. " entries → " .. path)
+        end
+    end)
+
+    dashboard = hs.webview.new({ x = x, y = y, w = w, h = h },
+        { developerExtrasEnabled = true }, controller)
+    dashboard:windowStyle({ "titled", "closable", "resizable", "miniaturizable" })
+    dashboard:windowTitle("Dictation History")
+    dashboard:allowTextEntry(true)
+    dashboard:level(hs.canvas.windowLevels.normal)
+    dashboard:html(DASHBOARD_HTML)
+    dashboard:show()
+    dashboard:bringToFront(true)
+
+    -- Safety: if "ready" didn't fire, push history after 400ms.
+    hs.timer.doAfter(0.4, pushHistoryToDashboard)
+end
+
+local function closeDashboard()
+    if dashboard then dashboard:delete(); dashboard = nil end
+end
 
 -- Auto-stop state
 local silentChunkCount = 0
@@ -988,30 +1115,15 @@ local function buildMenuBarMenu()
         end,
     })
 
-    -- Recent dictations
-    if #recentDictations > 0 then
-        table.insert(items, { title = "-" })
-        table.insert(items, { title = "Recent Dictations", disabled = true })
-        for _, entry in ipairs(recentDictations) do
-            local ago = os.time() - entry.time
-            local timeStr
-            if ago < 60 then timeStr = "just now"
-            elseif ago < 3600 then timeStr = math.floor(ago / 60) .. "m ago"
-            else timeStr = math.floor(ago / 3600) .. "h ago"
-            end
-            local preview = entry.text
-            if #preview > 40 then preview = preview:sub(1, 37) .. "..." end
-            local icon = entry.inserted and "⏎" or "⚡"
-            table.insert(items, {
-                title = icon .. " " .. preview .. "  " .. timeStr,
-                fn = function()
-                    hs.pasteboard.setContents(entry.text)
-                    hs.eventtap.keyStroke({"cmd"}, "v")
-                    hs.notify.new({ title = "Pasted", informativeText = entry.text }):send()
-                end,
-            })
-        end
-    end
+    -- History dashboard (replaces the old inline "Recent Dictations" list)
+    table.insert(items, { title = "-" })
+    local historyLabel = (#recentDictations == 0)
+        and "History… (empty)"
+        or  ("History… (" .. #recentDictations .. ")")
+    table.insert(items, {
+        title = historyLabel,
+        fn = function() openDashboard() end,
+    })
 
     table.insert(items, { title = "-" })
 
@@ -1192,12 +1304,16 @@ local function finishInsertion(text, detectedLang)
     ctx.text = finalText
     runPostInsertActions(ctx)
 
-    -- Track in recent dictations
+    -- Track in history
     table.insert(recentDictations, 1, {
         text = ctx.originalText,
+        refined = ctx.text ~= ctx.originalText and ctx.text or nil,
         time = os.time(),
         inserted = ctx.inserted,
         app = capturedAppName or "?",
+        model = getModelName(),
+        chars = #(ctx.originalText or ""),
+        lang = detectedLang or getLang(),
     })
     while #recentDictations > MAX_RECENT do
         table.remove(recentDictations)

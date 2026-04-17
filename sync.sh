@@ -21,6 +21,11 @@ if [[ -f "$HAMMERSPOON_DIR/overlay.html" ]]; then
     echo "[+] overlay.html → repo"
 fi
 
+if [[ -f "$HAMMERSPOON_DIR/dashboard.html" ]]; then
+    cp "$HAMMERSPOON_DIR/dashboard.html" "$REPO_DIR/hammerspoon/dashboard.html"
+    echo "[+] dashboard.html → repo"
+fi
+
 # Only overwrite the example file if user's copy has diverged meaningfully.
 # Prevents clobbering the upstream default voice commands with a personal set
 # unless explicitly intended.

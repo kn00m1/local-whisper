@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dictation History</title>
+<style>
+  :root {
+    --bg: #0f0f12;
+    --panel: #17171b;
+    --panel-hi: #1e1e24;
+    --fg: #e8e4dc;
+    --muted: #868279;
+    --border: rgba(255,255,255,.07);
+    --accent: #c9b88a;
+    --danger: #d97070;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "SF Pro Display", "Inter", system-ui, sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  body { display: flex; flex-direction: column; }
+
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  header h1 {
+    margin: 0; font-size: 15px; font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  header .stat {
+    color: var(--muted); font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .search {
+    flex: 1 1 auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--fg);
+    font: inherit; font-size: 12.5px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search:focus { border-color: rgba(201,184,138,.35); }
+  .icon-btn {
+    appearance: none; border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--fg);
+    font: inherit; font-size: 11px; font-weight: 500;
+    padding: 7px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    transition: background .12s, border-color .12s;
+  }
+  .icon-btn:hover { background: var(--panel-hi); border-color: rgba(255,255,255,.14); }
+  .icon-btn.danger { color: var(--danger); }
+
+  main {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 8px 0 32px;
+  }
+  .day-header {
+    padding: 18px 24px 8px;
+    font-size: 10.5px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+  }
+  .empty {
+    padding: 80px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 300;
+  }
+  .empty h2 { color: var(--fg); font-weight: 500; margin: 0 0 6px; }
+
+  .row {
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    gap: 16px;
+    align-items: start;
+    padding: 12px 24px;
+    border-bottom: 1px solid rgba(255,255,255,.03);
+    transition: background .12s;
+  }
+  .row:hover { background: rgba(255,255,255,.02); }
+  .row .time {
+    color: var(--muted);
+    font-family: "SF Mono", "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    padding-top: 2px;
+    letter-spacing: 0.02em;
+  }
+  .row .text {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg);
+    cursor: pointer;
+    user-select: text;
+    word-break: break-word;
+  }
+  .row .meta {
+    display: flex; gap: 10px;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 10.5px;
+  }
+  .row .meta span { letter-spacing: 0.02em; }
+  .row .meta .refined { color: var(--accent); }
+  .row .actions {
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity .15s;
+  }
+  .row:hover .actions { opacity: 1; }
+  .row .actions button {
+    appearance: none; border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--fg);
+    font: inherit; font-size: 10.5px; font-weight: 500;
+    padding: 5px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    transition: background .1s, border-color .1s, color .1s;
+  }
+  .row .actions button:hover { background: var(--panel-hi); border-color: rgba(255,255,255,.18); }
+  .row .actions button.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(40px);
+    background: var(--panel-hi);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    box-shadow: 0 12px 28px -10px rgba(0,0,0,0.5);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Scrollbar */
+  main::-webkit-scrollbar { width: 8px; }
+  main::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.07);
+    border-radius: 4px;
+  }
+  main::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.14); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Dictation History</h1>
+  <span class="stat" id="stat">0 entries</span>
+  <input class="search" id="search" placeholder="Search dictations…" autocomplete="off" spellcheck="false">
+  <button class="icon-btn" id="exportBtn">Export</button>
+</header>
+
+<main id="list">
+  <div class="empty" id="empty"><h2>No dictations yet</h2>Press Right Ctrl and speak to add one.</div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // Lua injects history via window.lw.load(jsonString).
+  // JS → Lua via window.webkit.messageHandlers.lw.postMessage({action, index, text}).
+  //   action: "copy" | "paste" | "delete" | "export"
+
+  let history = [];
+
+  function send(action, payload) {
+    try {
+      window.webkit.messageHandlers.lw.postMessage(Object.assign({ action }, payload || {}));
+    } catch (e) {
+      console.warn("lw message handler not available", e);
+    }
+  }
+
+  function toast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove("show"), 1600);
+  }
+
+  function dayBucket(unix) {
+    const now = new Date();
+    const d = new Date(unix * 1000);
+    const sameDay = (a, b) => a.getFullYear() === b.getFullYear()
+      && a.getMonth() === b.getMonth()
+      && a.getDate() === b.getDate();
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    if (sameDay(now, d)) return "Today";
+    if (sameDay(y, d)) return "Yesterday";
+    const diffDays = Math.floor((now - d) / 86400000);
+    if (diffDays < 7) return "This week";
+    if (diffDays < 30) return "Earlier this month";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "long" });
+  }
+
+  function fmtTime(unix) {
+    const d = new Date(unix * 1000);
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+  }
+
+  function renderList(filter) {
+    const list = document.getElementById("list");
+    const empty = document.getElementById("empty");
+    const q = (filter || "").toLowerCase().trim();
+    const matches = history
+      .map((e, i) => ({ e, i }))
+      .filter(({ e }) => !q ||
+        (e.text && e.text.toLowerCase().includes(q)) ||
+        (e.refined && e.refined.toLowerCase().includes(q)));
+
+    list.innerHTML = "";
+    document.getElementById("stat").textContent =
+      `${matches.length} of ${history.length} ${history.length === 1 ? "entry" : "entries"}`;
+
+    if (matches.length === 0) {
+      const msg = q
+        ? `<h2>No matches</h2>for "${q.replace(/[<>&]/g, '')}"`
+        : `<h2>No dictations yet</h2>Press Right Ctrl and speak to add one.`;
+      list.innerHTML = `<div class="empty">${msg}</div>`;
+      return;
+    }
+
+    let lastBucket = null;
+    const frag = document.createDocumentFragment();
+    matches.forEach(({ e, i }) => {
+      const bucket = dayBucket(e.time);
+      if (bucket !== lastBucket) {
+        const h = document.createElement("div");
+        h.className = "day-header";
+        h.textContent = bucket;
+        frag.appendChild(h);
+        lastBucket = bucket;
+      }
+      const row = document.createElement("div");
+      row.className = "row";
+      const text = e.refined || e.text || "";
+      const meta = [];
+      meta.push(`<span>${e.app || "?"}</span>`);
+      if (e.model) meta.push(`<span>${e.model}</span>`);
+      if (e.chars != null) meta.push(`<span>${e.chars} ch</span>`);
+      if (e.refined) meta.push(`<span class="refined">refined</span>`);
+      if (e.lang) meta.push(`<span>${String(e.lang).toUpperCase()}</span>`);
+      row.innerHTML = `
+        <div class="time">${fmtTime(e.time)}</div>
+        <div>
+          <div class="text" data-idx="${i}">${escapeHtml(text)}</div>
+          <div class="meta">${meta.join(" · ")}</div>
+        </div>
+        <div class="actions">
+          <button data-act="copy" data-idx="${i}">Copy</button>
+          <button data-act="paste" data-idx="${i}">Paste</button>
+          <button class="danger" data-act="delete" data-idx="${i}">Delete</button>
+        </div>
+      `;
+      frag.appendChild(row);
+    });
+    list.appendChild(frag);
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  document.getElementById("list").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-act]");
+    if (btn) {
+      const idx = Number(btn.dataset.idx);
+      const entry = history[idx];
+      if (!entry) return;
+      const text = entry.refined || entry.text || "";
+      if (btn.dataset.act === "copy") {
+        send("copy", { text });
+        toast("Copied to clipboard");
+      } else if (btn.dataset.act === "paste") {
+        send("paste", { text });
+        toast("Pasted at cursor");
+      } else if (btn.dataset.act === "delete") {
+        send("delete", { time: entry.time });
+        history.splice(idx, 1);
+        renderList(document.getElementById("search").value);
+        toast("Deleted");
+      }
+      return;
+    }
+    const textEl = e.target.closest(".text");
+    if (textEl) {
+      const idx = Number(textEl.dataset.idx);
+      const entry = history[idx];
+      if (entry) {
+        const text = entry.refined || entry.text || "";
+        send("copy", { text });
+        toast("Copied to clipboard");
+      }
+    }
+  });
+
+  document.getElementById("search").addEventListener("input", (e) => {
+    renderList(e.target.value);
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", () => {
+    send("export");
+    toast("Exported to ~/Downloads");
+  });
+
+  // Lua-facing API
+  window.lw = {
+    load(json) {
+      try {
+        history = JSON.parse(json) || [];
+      } catch (e) {
+        history = [];
+      }
+      renderList(document.getElementById("search").value);
+    },
+  };
+
+  // If Lua didn't load yet (WKWebView race), request on our side via message handler.
+  window.addEventListener("DOMContentLoaded", () => {
+    send("ready");
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>local-whisper — Overlay Theme Library</title>
+<style>
+  :root {
+    --bg: #1a1a1d;
+    --fg: #e5e4e0;
+    --muted: #8b8985;
+    --card: #222225;
+    --border: rgba(255,255,255,.06);
+    --accent-pick: #c9b88a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "SF Pro Display", "Inter", "Söhne", system-ui, sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  header {
+    padding: 56px 56px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 12px; font-size: 28px; font-weight: 400;
+    letter-spacing: -0.025em;
+  }
+  header p {
+    margin: 0; color: var(--muted); font-size: 13px;
+    max-width: 680px; line-height: 1.7; font-weight: 300;
+  }
+  .section-head {
+    padding: 48px 56px 8px;
+    font-size: 11px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--accent-pick);
+  }
+  .section-sub {
+    padding: 0 56px 20px;
+    color: var(--muted); font-size: 12.5px; font-weight: 300;
+    max-width: 640px;
+  }
+  main {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 28px;
+    padding: 12px 56px 0;
+  }
+  main:last-of-type { padding-bottom: 120px; }
+  .variant {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 16px;
+    transition: border-color .2s;
+  }
+  .variant:hover { border-color: rgba(255,255,255,.12); }
+  .variant.picked {
+    border-color: var(--accent-pick);
+    box-shadow: 0 0 0 3px rgba(201,184,138,.14);
+  }
+  .variant h3 {
+    margin: 0; font-size: 11px; font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent-pick);
+  }
+  .variant .desc {
+    margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6;
+    font-weight: 300;
+  }
+  .preview-frame {
+    height: 160px;
+    border-radius: 10px;
+    background:
+      radial-gradient(1200px 500px at 30% 20%, #33332d 0%, transparent 55%),
+      radial-gradient(900px 400px at 80% 80%, #2a2927 0%, transparent 50%),
+      linear-gradient(135deg, #1f1e1c 0%, #15140f 100%);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; position: relative;
+  }
+  .pick-btn {
+    align-self: flex-start;
+    appearance: none; border: 0; cursor: pointer;
+    font: inherit; font-size: 11px; font-weight: 500;
+    letter-spacing: 0.04em;
+    padding: 8px 16px; border-radius: 6px;
+    background: rgba(255,255,255,.04);
+    color: var(--fg);
+    text-transform: uppercase;
+    transition: background .15s;
+  }
+  .pick-btn:hover { background: rgba(255,255,255,.1); }
+  .variant.picked .pick-btn { background: var(--accent-pick); color: #1a1a1d; }
+  .variant.picked .pick-btn::after { content: "  ✓"; }
+
+  /* ─── Shared overlay primitives ─────────────────────────────── */
+  .overlay {
+    display: flex; align-items: center;
+    font-family: -apple-system, "SF Pro Display", system-ui, sans-serif;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    letter-spacing: 0.02em;
+  }
+  .dot {
+    border-radius: 50%; flex: 0 0 auto;
+    animation: pulseDot 1.6s ease-in-out infinite;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 0.95; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+  .wave { display: flex; align-items: center; flex: 1 1 auto; justify-content: center; }
+  .wave span { border-radius: 1px; animation: waveBar 1.2s ease-in-out infinite; }
+  .wave span:nth-child(1)  { animation-delay: -0.00s; }
+  .wave span:nth-child(2)  { animation-delay: -0.07s; }
+  .wave span:nth-child(3)  { animation-delay: -0.14s; }
+  .wave span:nth-child(4)  { animation-delay: -0.21s; }
+  .wave span:nth-child(5)  { animation-delay: -0.28s; }
+  .wave span:nth-child(6)  { animation-delay: -0.35s; }
+  .wave span:nth-child(7)  { animation-delay: -0.42s; }
+  .wave span:nth-child(8)  { animation-delay: -0.49s; }
+  .wave span:nth-child(9)  { animation-delay: -0.56s; }
+  .wave span:nth-child(10) { animation-delay: -0.63s; }
+  .wave span:nth-child(11) { animation-delay: -0.70s; }
+  .wave span:nth-child(12) { animation-delay: -0.77s; }
+  .wave span:nth-child(13) { animation-delay: -0.84s; }
+  .wave span:nth-child(14) { animation-delay: -0.91s; }
+  .wave span:nth-child(15) { animation-delay: -0.98s; }
+  .wave span:nth-child(16) { animation-delay: -1.05s; }
+  .wave span:nth-child(17) { animation-delay: -1.12s; }
+  .wave span:nth-child(18) { animation-delay: -1.19s; }
+  .wave span:nth-child(19) { animation-delay: -1.26s; }
+  .wave span:nth-child(20) { animation-delay: -1.33s; }
+  @keyframes waveBar {
+    0%, 100% { height: 15%; opacity: 0.45; }
+    25%  { height: 85%; opacity: 1; }
+    50%  { height: 30%; opacity: 0.6; }
+    75%  { height: 65%; opacity: 0.9; }
+  }
+  .timer {
+    font-family: "SF Mono", "JetBrains Mono", monospace;
+    font-size: 10.5px; opacity: 0.65;
+    flex: 0 0 auto; letter-spacing: 0.03em;
+  }
+  .label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.14em; opacity: 0.55;
+    font-weight: 500; flex: 0 0 auto;
+  }
+
+  /* =============================================================
+     TIER A — Designer-grade Nordic (the new high bar)
+     ============================================================= */
+
+  /* A1. Editorial — the overlay as a business card.
+     Tight hairline border, asymmetric layout (dot | waveform-centered | timer right),
+     content-first, no-nonsense. Modeled after Linear's compose bar. */
+  .editorial {
+    width: 340px; height: 40px;
+    padding: 0 18px 0 14px;
+    background: #111112;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    gap: 14px;
+    box-shadow:
+      0 1px 0 0 rgba(255,255,255,0.04) inset,
+      0 10px 30px -12px rgba(0,0,0,0.6),
+      0 0 0 1px rgba(0,0,0,0.4);
+    color: #eaeae6;
+  }
+  .editorial::before {
+    content: ""; width: 2px; height: 14px;
+    background: #d4884c; border-radius: 1px; margin-right: 2px;
+    flex: 0 0 auto;
+  }
+  .editorial .dot { display: none; }  /* hidden; use accent bar instead */
+  .editorial .wave { height: 16px; gap: 3px; }
+  .editorial .wave span { width: 2px; background: #d8d6d0; }
+  .editorial .timer { color: #6a6a66; font-size: 10px; }
+
+  /* A2. Paper — one genuinely beautiful white card.
+     Variable-size bars (center taller than edges), soft paper shadow, perfect spacing.
+     Modeled after Arc/Framer tooltip. */
+  .paper {
+    width: 340px; height: 46px;
+    padding: 0 20px;
+    background: #fbf8f1;
+    border: 1px solid rgba(20,14,8,0.08);
+    border-radius: 14px;
+    gap: 14px;
+    box-shadow:
+      0 2px 6px rgba(20,14,8,0.06),
+      0 16px 40px -12px rgba(20,14,8,0.28),
+      inset 0 1px 0 rgba(255,255,255,0.8);
+    color: #1a1513;
+  }
+  .paper .dot { width: 6px; height: 6px; background: #c44536; box-shadow: 0 0 0 3px rgba(196,69,54,0.12); }
+  .paper .wave { height: 20px; gap: 3.5px; }
+  .paper .wave span { width: 1.5px; background: #1a1513; opacity: 0.85; }
+  /* stepped heights — "envelope" shape (tallest center) */
+  .paper .wave span:nth-child(n+6):nth-child(-n+15) { opacity: 1; }
+  .paper .timer { color: #6a5e52; font-weight: 500; font-size: 10px; }
+
+  /* A3. Slate — the moment before sunrise.
+     Deep blue-grey with warm ember accent. The kind of thing you'd see in Things/Bear.
+     Hint of material depth via inner shadow. */
+  .slate {
+    width: 340px; height: 44px;
+    padding: 0 18px;
+    background: #1f242d;
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 14px;
+    gap: 14px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.04),
+      inset 0 -1px 0 rgba(0,0,0,0.2),
+      0 14px 32px -14px rgba(0,0,0,0.7);
+    color: #dadce0;
+  }
+  .slate .dot { width: 5px; height: 5px; background: #e89460; }
+  .slate .wave { height: 18px; gap: 3px; }
+  .slate .wave span {
+    width: 2px;
+    background: linear-gradient(180deg, #dadce0 0%, rgba(218,220,224,0.6) 100%);
+  }
+  .slate .timer { color: #7a8085; font-size: 10px; }
+
+  /* A4. Atelier — a single refined accent stripe on top of matte paper.
+     Teenage Engineering meets Nordic interior. */
+  .atelier {
+    width: 340px; height: 44px;
+    padding: 0 18px;
+    background: #e8e3d6;
+    border-radius: 3px;
+    gap: 14px;
+    border: 1px solid #c5bfae;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.5),
+      0 2px 0 #b8b1a0,
+      0 10px 24px -10px rgba(60,52,40,0.35);
+    color: #2a2420;
+    font-family: "SF Mono", "JetBrains Mono", monospace;
+    position: relative;
+  }
+  .atelier::before {
+    content: ""; position: absolute; top: 0; left: 18px; right: 18px;
+    height: 2px; background: #d4884c;
+  }
+  .atelier .dot { width: 5px; height: 5px; background: #c44536; border-radius: 0; }
+  .atelier .wave { height: 18px; gap: 3px; }
+  .atelier .wave span { width: 2px; background: #2a2420; border-radius: 0; }
+  .atelier .timer { color: #5a5044; font-weight: 500; }
+
+  /* =============================================================
+     TIER B — Nordic naturals (warm off-whites & dusk tones)
+     ============================================================= */
+
+  /* B1. Fog */
+  .fog { width: 320px; height: 44px; padding: 0 22px; background: #ece6dc; border-radius: 22px; gap: 14px;
+    box-shadow: 0 8px 24px -8px rgba(0,0,0,0.25), 0 1px 2px rgba(0,0,0,0.1), inset 0 0 0 1px rgba(0,0,0,0.03); color: #3a3a38; }
+  .fog .dot { width: 5px; height: 5px; background: #c94a4a; }
+  .fog .wave { height: 16px; gap: 3px; }
+  .fog .wave span { width: 2px; background: #5a6b7e; opacity: 0.75; }
+  .fog .timer { color: #8a8985; }
+
+  /* B2. Bone */
+  .bone { width: 320px; height: 44px; padding: 0 22px; background: #f5efe3; border-radius: 12px; gap: 14px;
+    border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 12px 28px -12px rgba(0,0,0,0.35); color: #1c1c1a; }
+  .bone .dot { width: 5px; height: 5px; background: #1c1c1a; }
+  .bone .wave { height: 18px; gap: 4px; }
+  .bone .wave span { width: 1.5px; background: #1c1c1a; }
+  .bone .timer { color: #6b6b68; }
+
+  /* B3. Linen */
+  .linen { width: 320px; height: 44px; padding: 0 22px; background: #e8dcc8; border-radius: 22px; gap: 14px;
+    box-shadow: 0 8px 20px -8px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(62,47,37,0.06); color: #3e2f25; }
+  .linen .dot { width: 5px; height: 5px; background: #a85d44; }
+  .linen .wave { height: 18px; gap: 3px; }
+  .linen .wave span { width: 2px; background: #a85d44; opacity: 0.75; }
+  .linen .timer { color: #7a6955; }
+
+  /* B4. Clay */
+  .clay { width: 320px; height: 44px; padding: 0 22px; background: #d9cbb8; border-radius: 22px; gap: 12px;
+    color: #2d2620; box-shadow: 0 8px 20px -10px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(45,38,32,0.06); }
+  .clay .dot { width: 5px; height: 5px; background: #8c5538; }
+  .clay .wave { height: 16px; gap: 3px; }
+  .clay .wave span { width: 2px; background: #8c5538; opacity: 0.8; }
+  .clay .timer { color: #6a5d50; }
+
+  /* B5. Glacier */
+  .glacier { width: 320px; height: 44px; padding: 0 22px;
+    background: rgba(232,236,240,0.82);
+    backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid rgba(42,53,66,0.08); border-radius: 22px; gap: 14px;
+    box-shadow: 0 12px 32px -12px rgba(0,0,0,0.2); color: #2a3542; }
+  .glacier .dot { width: 5px; height: 5px; background: #5a7a95; }
+  .glacier .wave { height: 18px; gap: 3px; }
+  .glacier .wave span { width: 2px; background: #5a7a95; }
+  .glacier .timer { color: #6a7a88; }
+
+  /* =============================================================
+     TIER C — Nordic deeps (dark mode, quiet confidence)
+     ============================================================= */
+
+  /* C1. Fjord */
+  .fjord { width: 320px; height: 44px; padding: 0 22px; background: #1e2a36; border-radius: 22px; gap: 14px;
+    box-shadow: 0 8px 24px -6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04); color: #d8dcd0; }
+  .fjord .dot { width: 5px; height: 5px; background: #e8a87c; }
+  .fjord .wave { height: 18px; gap: 3px; }
+  .fjord .wave span { width: 2px; background: #b8c5a5; opacity: 0.82; }
+  .fjord .timer { color: #8a9498; }
+
+  /* C2. Moss */
+  .moss { width: 320px; height: 44px; padding: 0 22px; background: #252e26; border-radius: 22px; gap: 14px;
+    box-shadow: 0 8px 24px -6px rgba(0,0,0,0.55); color: #e8e0d0; }
+  .moss .dot { width: 5px; height: 5px; background: #c88a5a; }
+  .moss .wave { height: 18px; gap: 3px; }
+  .moss .wave span { width: 2px; background: #c9c0a8; }
+  .moss .timer { color: #8a9080; }
+
+  /* C3. Ink */
+  .ink { width: 320px; height: 44px; padding: 0 22px; background: #15151a;
+    border: 1px solid rgba(232,224,208,0.08); border-radius: 22px; gap: 14px;
+    color: #e8e0d0; box-shadow: 0 8px 24px -6px rgba(0,0,0,0.6); }
+  .ink .dot { width: 5px; height: 5px; background: #c9b88a; }
+  .ink .wave { height: 18px; gap: 3px; }
+  .ink .wave span { width: 1.5px; background: #c9b88a; }
+  .ink .timer { color: #6a6a65; }
+
+  /* C4. Wisp */
+  .wisp { width: 320px; height: 44px; padding: 0 22px;
+    background: rgba(24,22,20,0.5);
+    backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid rgba(232,213,176,0.12); border-radius: 22px; gap: 14px;
+    color: #e8d5b0; box-shadow: 0 12px 32px -12px rgba(0,0,0,0.5); }
+  .wisp .dot { width: 5px; height: 5px; background: #d4884c; box-shadow: 0 0 10px rgba(212,136,76,0.4); }
+  .wisp .wave { height: 18px; gap: 3px; }
+  .wisp .wave span { width: 1.5px; background: #e8d5b0; }
+  .wisp .timer { color: #a89980; }
+
+  /* C5. Mono */
+  .mono { width: 320px; height: 44px; padding: 0 22px; background: #d1cfc9; border-radius: 6px; gap: 14px;
+    color: #1c1c1c; border: 1px solid #b8b5ae;
+    box-shadow: 0 2px 0 #a8a59e, 0 10px 20px -6px rgba(0,0,0,0.25);
+    font-family: "SF Mono", "JetBrains Mono", monospace; }
+  .mono .dot { width: 5px; height: 5px; background: #e85d2a; border-radius: 0; }
+  .mono .wave { height: 18px; gap: 3px; }
+  .mono .wave span { width: 2px; background: #1c1c1c; border-radius: 0; }
+  .mono .timer { color: #4a4a48; font-weight: 500; }
+
+  /* =============================================================
+     TIER D — Bold / effects (kept from first pass, for contrast)
+     ============================================================= */
+
+  /* D1. Glass Black — SuperWhisper reference */
+  .glass-black { width: 320px; padding: 10px 18px; background: rgba(18,18,22,0.55);
+    backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; gap: 12px; color: rgba(255,255,255,0.92);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06); }
+  .glass-black .dot { width: 6px; height: 6px; background: #ef4444; }
+  .glass-black .wave { height: 22px; gap: 3px; }
+  .glass-black .wave span { width: 2px; background: rgba(255,255,255,0.85); }
+
+  /* D2. Neon Cyberpunk */
+  .neon { width: 320px; padding: 10px 18px; background: linear-gradient(135deg, #050010 0%, #0a0014 100%);
+    border: 1px solid rgba(255,0,200,0.4); border-radius: 28px; gap: 12px; color: #00ffff;
+    box-shadow: 0 0 24px rgba(255,0,200,0.25), 0 0 60px rgba(0,255,255,0.08); }
+  .neon .dot { width: 6px; height: 6px; background: #ff00c8; box-shadow: 0 0 12px #ff00c8; }
+  .neon .wave { height: 22px; gap: 3px; }
+  .neon .wave span { width: 2px; background: linear-gradient(180deg, #00ffff 0%, #ff00c8 100%); box-shadow: 0 0 6px rgba(0,255,255,0.4); }
+  .neon .timer { color: #00ffff; text-shadow: 0 0 8px rgba(0,255,255,0.6); }
+
+  /* D3. Gradient Sweep */
+  .sweep { width: 320px; padding: 10px 18px;
+    background: conic-gradient(from 0deg, #5b8def, #a855f7, #ec4899, #f59e0b, #5b8def);
+    border-radius: 28px; gap: 12px; position: relative; overflow: hidden; color: white;
+    animation: sweepSpin 8s linear infinite; }
+  .sweep::before { content: ""; position: absolute; inset: 1.5px; border-radius: 27px;
+    background: rgba(10,10,15,0.86); backdrop-filter: blur(12px); z-index: 0; }
+  .sweep > * { position: relative; z-index: 1; }
+  @keyframes sweepSpin { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+  .sweep .wave { height: 22px; gap: 3px; }
+  .sweep .wave span { width: 2px; background: linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.5) 100%); }
+  .sweep .dot { width: 6px; height: 6px; background: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.8); }
+
+  /* D4. Arc Card */
+  .arc-card { width: 300px; padding: 14px 18px; background: white; border-radius: 16px; gap: 12px;
+    font-family: -apple-system, "SF Pro Rounded", sans-serif; font-weight: 500; color: #1c1c1e;
+    box-shadow: 0 20px 40px -10px rgba(0,0,0,0.3), 0 2px 6px rgba(0,0,0,0.1);
+    border: 1px solid rgba(255,165,0,0.3); }
+  .arc-card .dot { width: 6px; height: 6px; background: #ff3b30; }
+  .arc-card .wave { height: 22px; gap: 3px; }
+  .arc-card .wave span { width: 2px; background: linear-gradient(180deg, #ff9500 0%, #ff2d55 100%); }
+  .arc-card .timer { color: #6b7280; }
+
+  footer {
+    margin-top: 80px;
+    padding: 28px 56px; color: var(--muted); font-size: 12px;
+    border-top: 1px solid var(--border); font-weight: 300;
+  }
+  footer strong { color: var(--fg); font-weight: 500; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Overlay theme library</h1>
+  <p>
+    The full set. Pick one or describe a blend. Tier A is the designer-grade attempts — where I pushed hardest for editorial restraint and material depth.
+    Tier B/C are Nordic palettes (warm off-whites, dusk tones, dark confidence). Tier D are bolder / effect-driven options kept for contrast.
+  </p>
+</header>
+
+<div class="section-head">Tier A — designer-grade (new high bar)</div>
+<p class="section-sub">
+  Restraint carried to a finer point. Asymmetric layouts, hairline accents, "envelope" waveform shape, paper/slate materials.
+  This is where I'd ship from.
+</p>
+<main id="gallery-a"></main>
+
+<div class="section-head">Tier B — Nordic naturals</div>
+<p class="section-sub">Warm off-whites and dusk palettes. Light-mode comfort. Sit calmly on anything.</p>
+<main id="gallery-b"></main>
+
+<div class="section-head">Tier C — Nordic deeps</div>
+<p class="section-sub">Dark-mode confidence. Fjord, forest, ink, candlelight. Quiet but present.</p>
+<main id="gallery-c"></main>
+
+<div class="section-head">Tier D — effects / bold (kept for contrast)</div>
+<p class="section-sub">Not Nordic. Keeping for range — glass, neon, gradient, bright-card. Reference points, not destinations.</p>
+<main id="gallery-d"></main>
+
+<footer>
+  Picked: <strong id="pickedName">(none)</strong> — tell Claude the name or describe a blend ("editorial layout + fjord palette", "paper shape but darker", etc.).
+</footer>
+
+<script>
+  const tiers = {
+    a: [
+      { cls: "editorial", title: "A1 · Editorial", desc: "Hairline border, asymmetric accent bar instead of a dot, content-first. Modeled after Linear's compose bar. Ships from here." },
+      { cls: "paper",     title: "A2 · Paper",     desc: "The one genuinely beautiful white card. Envelope-shaped waveform (taller center). Paper shadow. Arc/Framer feel." },
+      { cls: "slate",     title: "A3 · Slate",     desc: "Deep blue-grey with ember accent. Inset top-highlight, deep drop-shadow. The moment before sunrise." },
+      { cls: "atelier",   title: "A4 · Atelier",   desc: "Matte paper with a single terracotta accent stripe. Squared corners. Teenage Engineering × Nordic interior. Mono font." },
+    ],
+    b: [
+      { cls: "fog",     title: "B1 · Fog",     desc: "Warm cream, slate waveform, tiny red dot. Everyday default for light mode." },
+      { cls: "bone",    title: "B2 · Bone",    desc: "Off-white paper + charcoal hairline bars. Editorial restraint." },
+      { cls: "linen",   title: "B3 · Linen",   desc: "Warm beige + soft terracotta. Honey hour." },
+      { cls: "clay",    title: "B4 · Clay",    desc: "Warm taupe + burnt sienna. Softer than bone, warmer than fog." },
+      { cls: "glacier", title: "B5 · Glacier", desc: "Frosted pale glass + sea blue. Backdrop-blur. Winter window." },
+    ],
+    c: [
+      { cls: "fjord", title: "C1 · Fjord", desc: "Deep navy, pale sage waveform, terracotta dot. Quiet dark-mode default." },
+      { cls: "moss",  title: "C2 · Moss",  desc: "Forest green, bone-white bars, honey-copper dot. For dark green kitchens." },
+      { cls: "ink",   title: "C3 · Ink",   desc: "Near-black + bone-gold hairline bars. Business-card minimalism." },
+      { cls: "wisp",  title: "C4 · Wisp",  desc: "Translucent dark + warm amber waveform. Candlelight through smoked glass." },
+      { cls: "mono",  title: "C5 · Mono",  desc: "Stone gray + squared corners + orange accent. Ableton/Teenage Engineering." },
+    ],
+    d: [
+      { cls: "glass-black", title: "D1 · Glass Black", desc: "SuperWhisper reference. Dark translucent pill, blur, white waveform." },
+      { cls: "neon",        title: "D2 · Neon",        desc: "Magenta/cyan glow bars. Cyberpunk." },
+      { cls: "sweep",       title: "D3 · Gradient Sweep", desc: "Animated multi-color rim, glass interior. Designer demo." },
+      { cls: "arc-card",    title: "D4 · Arc Card",    desc: "Bright white + orange/red gradient waveform." },
+    ],
+  };
+
+  const pickedName = document.getElementById("pickedName");
+  let picked = null;
+
+  function bars(n) { return Array.from({ length: n }).map(() => `<span></span>`).join(""); }
+
+  function render(tierKey) {
+    const gallery = document.getElementById("gallery-" + tierKey);
+    tiers[tierKey].forEach(v => {
+      const card = document.createElement("section");
+      card.className = "variant";
+      card.innerHTML = `
+        <h3>${v.title}</h3>
+        <p class="desc">${v.desc}</p>
+        <div class="preview-frame">
+          <div class="overlay ${v.cls}">
+            <div class="dot"></div>
+            <div class="wave">${bars(20)}</div>
+            <div class="timer" data-timer>0:00</div>
+          </div>
+        </div>
+        <button class="pick-btn" data-cls="${v.cls}" data-title="${v.title}">Pick this</button>
+      `;
+      gallery.appendChild(card);
+    });
+  }
+  ["a", "b", "c", "d"].forEach(render);
+
+  document.body.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pick-btn");
+    if (!btn) return;
+    if (picked) picked.classList.remove("picked");
+    picked = btn.closest(".variant");
+    picked.classList.add("picked");
+    pickedName.textContent = btn.dataset.title;
+  });
+
+  const start = Date.now();
+  setInterval(() => {
+    const s = Math.floor((Date.now() - start) / 1000);
+    const mm = Math.floor(s / 60), ss = s % 60;
+    const txt = `${mm}:${String(ss).padStart(2, "0")}`;
+    document.querySelectorAll("[data-timer]").forEach(el => el.textContent = txt);
+  }, 500);
+</script>
+</body>
+</html>

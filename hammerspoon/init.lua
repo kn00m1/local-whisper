@@ -56,7 +56,17 @@ end
 
 -- Audio device: ":default" for system default, ":0", ":1" etc. for specific
 -- Note: avfoundation requires colon prefix for audio-only (":0" not "0")
+-- Primary source of truth is ~/.local-whisper/audio_device (set via menu bar);
+-- this literal is the install-time default used on first run.
 local AUDIO_DEVICE = ":default"
+
+do
+    local f = io.open(CONFIG_DIR .. "/audio_device", "r")
+    if f then
+        local v = f:read("*a"):gsub("%s+", ""); f:close()
+        if v ~= "" then AUDIO_DEVICE = v end
+    end
+end
 
 -- Auto-fix missing colon prefix (common setup mistake)
 if AUDIO_DEVICE ~= ":default" and not AUDIO_DEVICE:match("^:") then
@@ -64,7 +74,7 @@ if AUDIO_DEVICE ~= ":default" and not AUDIO_DEVICE:match("^:") then
 end
 
 -- Trigger key: "rightAlt", "rightCmd", "rightCtrl"
-local TRIGGER_KEY = "rightCmd"
+local TRIGGER_KEY = "rightCtrl"
 
 -- User preference files (all in CONFIG_DIR)
 local LANG_FILE = CONFIG_DIR .. "/lang"
@@ -73,6 +83,8 @@ local PREFERRED_LANGS_FILE = CONFIG_DIR .. "/preferred_langs"
 local ENTER_FILE = CONFIG_DIR .. "/enter"
 local PROMPT_FILE = CONFIG_DIR .. "/prompt"
 local RECENT_FILE = CONFIG_DIR .. "/recent.json"
+local AUDIO_DEVICE_FILE = CONFIG_DIR .. "/audio_device"
+local THEME_FILE = CONFIG_DIR .. "/theme"
 local LOG_FILE = WHISPER_TMP .. "/whisper-dictate.log"
 
 -- Action hooks config
@@ -386,6 +398,36 @@ local function cycleEnter()
     return next
 end
 
+-- List avfoundation audio input devices. Returns array of {index=":N", name="..."}.
+-- Cached for the lifetime of this Hammerspoon load (cleared on reload).
+local audioDeviceCache = nil
+local function listAudioDevices()
+    if audioDeviceCache then return audioDeviceCache end
+    local cmd = FFMPEG .. " -f avfoundation -list_devices true -i '' 2>&1 || true"
+    local out = hs.execute(cmd, false) or ""
+    local devices = {}
+    local inAudio = false
+    for line in out:gmatch("[^\n]+") do
+        if line:match("AVFoundation audio devices") then
+            inAudio = true
+        elseif line:match("AVFoundation video devices") then
+            inAudio = false
+        elseif inAudio then
+            local idx, name = line:match("%[(%d+)%]%s+(.+)$")
+            if idx and name then
+                table.insert(devices, { index = ":" .. idx, name = name:gsub("%s+$", "") })
+            end
+        end
+    end
+    audioDeviceCache = devices
+    return devices
+end
+
+local function setAudioDevice(device)
+    writeFile(AUDIO_DEVICE_FILE, device)
+    hs.reload()
+end
+
 -- Pick fastest available model for live partial transcription
 local function getPartialModelPath()
     local preferred = { "tiny", "tiny.en", "base", "base.en", "small", "small.en" }
@@ -611,17 +653,87 @@ end
 -- Overlay UI
 --------------------------------------------------------------------------------
 
+-- Theme palettes. Switch live via menu bar → Theme submenu; persists in ~/.local-whisper/theme.
+local THEMES = {
+    classic = {
+        bg        = { red = 0.10, green = 0.10, blue = 0.10, alpha = 0.85 },
+        bgPinned  = { red = 0.15, green = 0.15, blue = 0.20, alpha = 0.92 },
+        btn       = { red = 0.50, green = 0.80, blue = 1.00, alpha = 1.00 },
+        btnHover  = { red = 0.70, green = 0.90, blue = 1.00, alpha = 1.00 },
+        sep       = { red = 0.40, green = 0.40, blue = 0.40, alpha = 1.00 },
+        enterOn   = { red = 0.30, green = 1.00, blue = 0.30, alpha = 1.00 },
+        enterOff  = { red = 0.50, green = 0.50, blue = 0.50, alpha = 0.50 },
+        refineOn  = { red = 0.40, green = 0.80, blue = 1.00, alpha = 1.00 },
+        refineOff = { red = 0.50, green = 0.50, blue = 0.50, alpha = 0.50 },
+        text      = { red = 1.00, green = 1.00, blue = 1.00, alpha = 1.00 },
+        dot       = { red = 1.00, green = 0.15, blue = 0.15 },   -- alpha set dynamically
+        timer     = { red = 1.00, green = 0.40, blue = 0.40 },
+    },
+    neon = {
+        bg        = { red = 0.02, green = 0.01, blue = 0.05, alpha = 0.92 },
+        bgPinned  = { red = 0.05, green = 0.01, blue = 0.10, alpha = 0.95 },
+        btn       = { red = 0.00, green = 1.00, blue = 1.00, alpha = 1.00 },  -- cyan
+        btnHover  = { red = 0.40, green = 1.00, blue = 1.00, alpha = 1.00 },
+        sep       = { red = 0.25, green = 0.20, blue = 0.40, alpha = 1.00 },
+        enterOn   = { red = 0.40, green = 1.00, blue = 0.20, alpha = 1.00 },  -- electric green
+        enterOff  = { red = 0.30, green = 0.25, blue = 0.40, alpha = 0.50 },
+        refineOn  = { red = 1.00, green = 0.20, blue = 0.90, alpha = 1.00 },  -- magenta
+        refineOff = { red = 0.30, green = 0.25, blue = 0.40, alpha = 0.50 },
+        text      = { red = 0.80, green = 1.00, blue = 1.00, alpha = 1.00 },  -- pale cyan
+        dot       = { red = 1.00, green = 0.00, blue = 0.55 },  -- hot pink
+        timer     = { red = 1.00, green = 0.30, blue = 0.75 },
+    },
+    tokyo = {
+        bg        = { red = 0.10, green = 0.11, blue = 0.16, alpha = 0.92 },  -- Tokyo Night bg
+        bgPinned  = { red = 0.13, green = 0.14, blue = 0.20, alpha = 0.95 },
+        btn       = { red = 0.48, green = 0.68, blue = 0.95, alpha = 1.00 },  -- soft blue
+        btnHover  = { red = 0.60, green = 0.78, blue = 1.00, alpha = 1.00 },
+        sep       = { red = 0.35, green = 0.38, blue = 0.45, alpha = 1.00 },
+        enterOn   = { red = 0.62, green = 0.85, blue = 0.55, alpha = 1.00 },  -- mint
+        enterOff  = { red = 0.40, green = 0.42, blue = 0.50, alpha = 0.50 },
+        refineOn  = { red = 0.73, green = 0.55, blue = 0.95, alpha = 1.00 },  -- purple
+        refineOff = { red = 0.40, green = 0.42, blue = 0.50, alpha = 0.50 },
+        text      = { red = 0.78, green = 0.82, blue = 0.90, alpha = 1.00 },
+        dot       = { red = 0.95, green = 0.47, blue = 0.54 },  -- salmon
+        timer     = { red = 0.95, green = 0.65, blue = 0.70 },
+    },
+}
+
+local function getTheme()
+    local f = io.open(THEME_FILE, "r")
+    if f then
+        local v = f:read("*a"):gsub("%s+", ""); f:close()
+        if THEMES[v] then return v, THEMES[v] end
+    end
+    return "classic", THEMES.classic
+end
+
+local function setTheme(name)
+    if THEMES[name] then writeFile(THEME_FILE, name); hs.reload() end
+end
+
+local _themeName, THEME = getTheme()
+
+-- Compose a theme color with a runtime alpha (for pulse animation etc).
+local function themeColor(c, a)
+    return { red = c.red, green = c.green, blue = c.blue, alpha = a == nil and (c.alpha or 1) or a }
+end
+
 local overlay = nil
-local btnColor = { red = 0.5, green = 0.8, blue = 1.0, alpha = 1.0 }
-local btnHover = { red = 0.7, green = 0.9, blue = 1.0, alpha = 1.0 }
+local btnColor = THEME.btn
+local btnHover = THEME.btnHover
 
--- Element indices: 1=bg, 2=lang, 3=sep1, 4=output, 5=sep2, 6=enter, 7=sep3, 8=model, 9=sep4, 10=refine, 11=text, 12=dot, 13=timer, 14=close
+-- Element indices:
+--   1=bg, 2..10=legacy status chrome (hidden by default), 11=text, 12=dot, 13=timer, 14=close
+--   15..30=waveform bars (16 bars)
 local EL = { lang = 2, output = 4, enter = 6, model = 8, refine = 10, text = 11, dot = 12, timer = 13, close = 14 }
+local BARS_COUNT = 16
+local BARS_START = 15  -- element index of first bar
 
-local enterOnColor = { red = 0.3, green = 1.0, blue = 0.3, alpha = 1.0 }
-local enterOffColor = { red = 0.5, green = 0.5, blue = 0.5, alpha = 0.5 }
-local refineOnColor = { red = 0.4, green = 0.8, blue = 1.0, alpha = 1.0 }
-local refineOffColor = { red = 0.5, green = 0.5, blue = 0.5, alpha = 0.5 }
+local enterOnColor   = THEME.enterOn
+local enterOffColor  = THEME.enterOff
+local refineOnColor  = THEME.refineOn
+local refineOffColor = THEME.refineOff
 
 local function refreshOverlayLabels()
     if not overlay then return end
@@ -636,117 +748,101 @@ local function refreshOverlayLabels()
 end
 
 local function createOverlay()
+    local width, height = 320, 48  -- pill shape, SuperWhisper-inspired
+    local cursor = hs.mouse.absolutePosition()
+    -- Pick the screen containing the cursor (works with multi-monitor).
     local screen = hs.screen.mainScreen()
+    for _, s in ipairs(hs.screen.allScreens()) do
+        local f = s:frame()
+        if cursor.x >= f.x and cursor.x < f.x + f.w
+           and cursor.y >= f.y and cursor.y < f.y + f.h then
+            screen = s
+            break
+        end
+    end
     local frame = screen:frame()
-    local width, height = 420, 100
-    local padding = 20
-    local x = frame.x + frame.w - width - padding
-    local y = frame.y + frame.h - height - padding - 50
+    local offset = 30
+    -- Anchor the overlay corner opposite to the cursor quadrant so it expands into free space.
+    local x = (cursor.x < frame.x + frame.w / 2)
+        and (cursor.x + offset)
+        or  (cursor.x - width - offset)
+    local y = (cursor.y < frame.y + frame.h / 2)
+        and (cursor.y + offset)
+        or  (cursor.y - height - offset)
+    -- Clamp to screen edges (10px margin).
+    x = math.max(frame.x + 10, math.min(x, frame.x + frame.w - width - 10))
+    y = math.max(frame.y + 10, math.min(y, frame.y + frame.h - height - 10))
 
     overlay = hs.canvas.new({ x = x, y = y, w = width, h = height })
 
-    -- 1: Background (click to pin overlay open)
+    local pillRadius = height / 2  -- full-pill rounded corners
+
+    -- 1: Background pill (click to pin/close via overlayPinned flag)
     overlay:appendElements({
         id = "bg",
         type = "rectangle", action = "fill",
-        roundedRectRadii = { xRadius = 10, yRadius = 10 },
-        fillColor = { red = 0.1, green = 0.1, blue = 0.1, alpha = 0.85 },
+        roundedRectRadii = { xRadius = pillRadius, yRadius = pillRadius },
+        fillColor = THEME.bg,
         trackMouseUp = true,
     })
 
-    -- Clickable status labels (each cycles on click)
-    local sepColor = { red = 0.4, green = 0.4, blue = 0.4, alpha = 1 }
+    -- Elements 2-10: legacy status chrome, kept invisible (alpha=0) so existing code paths don't crash.
+    local hidden = { red = 0, green = 0, blue = 0, alpha = 0 }
+    for _ = 2, 10 do
+        overlay:appendElements({ type = "text", text = "", textColor = hidden,
+            textSize = 1, frame = { x = "0%", y = "0%", w = "1%", h = "1%" } })
+    end
 
-    -- 2: Language
+    -- 11: Transcript text (hidden during recording; shown when final text arrives).
+    --     Kept as single-line inside the pill; long text just clips.
     overlay:appendElements({
-        id = "lang", type = "text", text = getLang():upper(),
-        textColor = btnColor, textSize = 11,
-        frame = { x = "4%", y = "6%", w = "10%", h = "25%" },
-        trackMouseUp = true, trackMouseEnterExit = true,
+        id = "text", type = "text", text = "",
+        textColor = THEME.text,
+        textSize = 13,
+        frame = { x = "14%", y = "25%", w = "70%", h = "50%" },
+        textAlignment = "center",
     })
-    -- 3: Separator
-    overlay:appendElements({
-        id = "sep1", type = "text", text = "|",
-        textColor = sepColor, textSize = 11,
-        frame = { x = "13%", y = "6%", w = "2%", h = "25%" },
-    })
-    -- 4: Output mode
-    overlay:appendElements({
-        id = "output", type = "text", text = getOutputMode():upper(),
-        textColor = btnColor, textSize = 11,
-        frame = { x = "15%", y = "6%", w = "13%", h = "25%" },
-        trackMouseUp = true, trackMouseEnterExit = true,
-    })
-    -- 5: Separator
-    overlay:appendElements({
-        id = "sep2", type = "text", text = "|",
-        textColor = sepColor, textSize = 11,
-        frame = { x = "27%", y = "6%", w = "2%", h = "25%" },
-    })
-    -- 6: Enter mode (⏎ green=on, gray=off)
-    overlay:appendElements({
-        id = "enter", type = "text", text = "⏎",
-        textColor = getEnterMode() and enterOnColor or enterOffColor, textSize = 11,
-        frame = { x = "29%", y = "6%", w = "5%", h = "25%" },
-        trackMouseUp = true, trackMouseEnterExit = true,
-    })
-    -- 7: Separator
-    overlay:appendElements({
-        id = "sep3", type = "text", text = "|",
-        textColor = sepColor, textSize = 11,
-        frame = { x = "34%", y = "6%", w = "2%", h = "25%" },
-    })
-    -- 8: Model
-    overlay:appendElements({
-        id = "model", type = "text", text = getModelName(),
-        textColor = btnColor, textSize = 11,
-        frame = { x = "36%", y = "6%", w = "20%", h = "25%" },
-        trackMouseUp = true, trackMouseEnterExit = true,
-    })
-    -- 9: Separator
-    overlay:appendElements({
-        id = "sep4", type = "text", text = "|",
-        textColor = sepColor, textSize = 11,
-        frame = { x = "54%", y = "6%", w = "2%", h = "25%" },
-    })
-    -- 10: LLM refine toggle
-    overlay:appendElements({
-        id = "refine", type = "text",
-        text = (getRefineMode() and hasOllama()) and "refine ✓" or "refine ✗",
-        textColor = (getRefineMode() and hasOllama()) and refineOnColor or refineOffColor,
-        textSize = 11,
-        frame = { x = "57%", y = "6%", w = "18%", h = "25%" },
-        trackMouseUp = true, trackMouseEnterExit = true,
-    })
-    -- 11: Transcript text
-    overlay:appendElements({
-        id = "text", type = "text", text = "Listening...",
-        textColor = { red = 1, green = 1, blue = 1, alpha = 1.0 },
-        textSize = 14,
-        frame = { x = "5%", y = "35%", w = "90%", h = "60%" },
-    })
-    -- 12: Recording indicator (pulsing red dot)
+
+    -- 12: Recording indicator (pulsing dot) — fixed left position.
     overlay:appendElements({
         id = "dot", type = "oval", action = "fill",
-        fillColor = { red = 1, green = 0.15, blue = 0.15, alpha = 0.0 },
-        frame = { x = "89%", y = "8%", w = "3%", h = "12%" },
+        fillColor = themeColor(THEME.dot, 0.0),
+        frame = { x = 14, y = 20, w = 8, h = 8 },
     })
-    -- 13: Elapsed time display
+
+    -- 13: Elapsed timer — fixed right position.
     overlay:appendElements({
         id = "timer", type = "text", text = "",
-        textColor = { red = 1, green = 0.4, blue = 0.4, alpha = 0.0 },
-        textSize = 10,
-        frame = { x = "75%", y = "8%", w = "14%", h = "20%" },
+        textColor = themeColor(THEME.timer, 0.0),
+        textSize = 11,
+        frame = { x = width - 60, y = 16, w = 50, h = 18 },
         textAlignment = "right",
     })
-    -- 14: Close button (X) — last element so it's on top and clickable
+
+    -- 14: Close X (hidden by default — emergency stop is in the menu bar).
     overlay:appendElements({
-        id = "close", type = "text", text = "✕",
-        textColor = { red = 1, green = 0.4, blue = 0.4, alpha = 0.8 },
-        textSize = 16, textAlignment = "center",
-        frame = { x = "90%", y = "10%", w = "8%", h = "20%" },
+        id = "close", type = "text", text = "",
+        textColor = hidden,
+        textSize = 1,
+        frame = { x = "0%", y = "0%", w = "1%", h = "1%" },
         trackMouseDown = true, trackMouseUp = true, trackMouseEnterExit = true,
     })
+
+    -- 15..30: 16 waveform bars, centered horizontally.
+    -- Bar: 4px wide, 3px gap → 16*4 + 15*3 = 109px total width.
+    -- Centered at (width-109)/2 = ~105. Vertical center at height/2 = 24.
+    local barWidth = 4
+    local barGap = 3
+    local barsTotalWidth = BARS_COUNT * barWidth + (BARS_COUNT - 1) * barGap
+    local barsStartX = math.floor((width - barsTotalWidth) / 2)
+    for i = 0, BARS_COUNT - 1 do
+        overlay:appendElements({
+            id = "bar" .. i, type = "rectangle", action = "fill",
+            roundedRectRadii = { xRadius = 1.5, yRadius = 1.5 },
+            fillColor = themeColor(THEME.btn, 0.35),  -- dim when idle
+            frame = { x = barsStartX + i * (barWidth + barGap), y = 22, w = barWidth, h = 4 },
+        })
+    end
 
     overlay:level(hs.canvas.windowLevels.floating)
     overlay:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
@@ -778,10 +874,10 @@ local function createOverlay()
             if id == "bg" then
                 overlayPinned = not overlayPinned
                 if overlayPinned then
-                    canvas[1].fillColor = { red = 0.15, green = 0.15, blue = 0.2, alpha = 0.92 }
+                    canvas[1].fillColor = THEME.bgPinned
                     log("overlay pinned")
                 else
-                    canvas[1].fillColor = { red = 0.1, green = 0.1, blue = 0.1, alpha = 0.85 }
+                    canvas[1].fillColor = THEME.bg
                     log("overlay unpinned")
                     if not isRecording then hideOverlay() end
                 end
@@ -972,6 +1068,46 @@ local function buildMenuBarMenu()
         fn = function() cycleModel(); updateMenuBar() end,
     })
 
+    -- Microphone picker (submenu listing avfoundation audio devices)
+    do
+        local devices = listAudioDevices()
+        local currentLabel = AUDIO_DEVICE
+        for _, d in ipairs(devices) do
+            if d.index == AUDIO_DEVICE then currentLabel = d.name break end
+        end
+        local submenu = {}
+        table.insert(submenu, {
+            title = ":default (system)",
+            checked = AUDIO_DEVICE == ":default",
+            fn = function() setAudioDevice(":default") end,
+        })
+        for _, d in ipairs(devices) do
+            table.insert(submenu, {
+                title = d.index .. "  " .. d.name,
+                checked = d.index == AUDIO_DEVICE,
+                fn = function() setAudioDevice(d.index) end,
+            })
+        end
+        table.insert(items, {
+            title = "Microphone: " .. currentLabel,
+            menu = submenu,
+        })
+    end
+
+    -- Theme picker (submenu)
+    do
+        local themeNames = { "classic", "neon", "tokyo" }
+        local submenu = {}
+        for _, name in ipairs(themeNames) do
+            table.insert(submenu, {
+                title = name,
+                checked = name == _themeName,
+                fn = function() setTheme(name) end,
+            })
+        end
+        table.insert(items, { title = "Theme: " .. _themeName, menu = submenu })
+    end
+
     -- Output mode
     table.insert(items, {
         title = "Output: " .. getOutputMode():upper(),
@@ -1031,7 +1167,7 @@ local function buildMenuBarMenu()
             else
                 showOverlay()
                 overlayPinned = true
-                overlay[1].fillColor = { red = 0.15, green = 0.15, blue = 0.2, alpha = 0.92 }
+                overlay[1].fillColor = THEME.bgPinned
                 setOverlayText("Click labels to change settings")
             end
         end,
@@ -1100,10 +1236,11 @@ local function startRecordingIndicator()
     pulseFading = true
 
     -- Show dot and timer
-    overlay[EL.dot].fillColor = { red = 1, green = 0.15, blue = 0.15, alpha = 1.0 }
-    overlay[EL.timer].textColor = { red = 1, green = 0.4, blue = 0.4, alpha = 1.0 }
+    overlay[EL.dot].fillColor = themeColor(THEME.dot, 1.0)
+    overlay[EL.timer].textColor = themeColor(THEME.timer, 1.0)
 
-    -- Pulse the red dot
+    -- Pulse the red dot + animate waveform bars
+    local barPhase = 0
     pulseTimer = hs.timer.doEvery(0.05, function()
         if not overlay then return end
         if pulseFading then
@@ -1113,7 +1250,22 @@ local function startRecordingIndicator()
             pulseAlpha = pulseAlpha + 0.03
             if pulseAlpha >= 1.0 then pulseFading = true end
         end
-        overlay[EL.dot].fillColor = { red = 1, green = 0.15, blue = 0.15, alpha = pulseAlpha }
+        overlay[EL.dot].fillColor = themeColor(THEME.dot, pulseAlpha)
+
+        -- Stylized waveform: combine a slow sine wave (for rhythm) with per-bar noise.
+        barPhase = barPhase + 0.25
+        for i = 0, BARS_COUNT - 1 do
+            local t = barPhase + i * 0.4
+            local wave = (math.sin(t) + 1) * 0.5                 -- 0..1
+            local noise = math.random() * 0.5 + 0.5              -- 0.5..1
+            local amp = wave * noise                             -- 0..1
+            local maxH = 30
+            local h = math.max(3, math.floor(amp * maxH))
+            local y = math.floor(24 - h / 2)
+            local el = overlay[BARS_START + i]
+            el.frame = { x = el.frame.x, y = y, w = el.frame.w, h = h }
+            el.fillColor = themeColor(THEME.btn, 0.6 + amp * 0.4)
+        end
     end)
 
     -- Update elapsed time every second
@@ -1130,9 +1282,17 @@ local function stopRecordingIndicator()
     if pulseTimer then pulseTimer:stop(); pulseTimer = nil end
     if clockTimer then clockTimer:stop(); clockTimer = nil end
     if overlay then
-        overlay[EL.dot].fillColor = { red = 1, green = 0.15, blue = 0.15, alpha = 0.0 }
-        overlay[EL.timer].textColor = { red = 1, green = 0.4, blue = 0.4, alpha = 0.0 }
+        overlay[EL.dot].fillColor = themeColor(THEME.dot, 0.0)
+        overlay[EL.timer].textColor = themeColor(THEME.timer, 0.0)
         overlay[EL.timer].text = ""
+        -- Flatten bars to idle (low, dim)
+        for i = 0, BARS_COUNT - 1 do
+            local el = overlay[BARS_START + i]
+            if el then
+                el.frame = { x = el.frame.x, y = 22, w = el.frame.w, h = 4 }
+                el.fillColor = themeColor(THEME.btn, 0.2)
+            end
+        end
     end
 end
 

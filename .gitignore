@@ -18,5 +18,8 @@ config.yaml
 # Claude Code
 .claude/
 
+# PARA personal notes (not part of the fork)
+_notes/
+
 # Dolt database files (added by bd init)
 *.db

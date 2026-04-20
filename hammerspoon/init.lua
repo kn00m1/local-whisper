@@ -384,6 +384,7 @@ local function refineWithOllama(text, callback)
         model = model,
         prompt = prompt,
         stream = false,
+        think = false,  -- thinking-capable models (qwen3.5, gemma4) stay terse
         keep_alive = REFINE_WARM_KEEP_ALIVE,
     })
     local tmpPayload = WHISPER_TMP .. "/refine_payload.json"
@@ -464,6 +465,7 @@ local function pingOllama()
         model = model,
         prompt = "",
         stream = false,
+        think = false,
         keep_alive = REFINE_WARM_KEEP_ALIVE,
     })
     local tmpPayload = WHISPER_TMP .. "/refine_warm.json"
@@ -2214,6 +2216,7 @@ local function saveMeetingOutput(notes, callback)
             model = getRefineModel(),
             prompt = summaryPrompt,
             stream = false,
+            think = false,
         })
         local tmpPayload = WHISPER_TMP .. "/meeting_summary_payload.json"
         local f = io.open(tmpPayload, "w")

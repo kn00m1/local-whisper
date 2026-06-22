@@ -52,7 +52,7 @@ Note: `$TMPDIR` inside a sandbox may differ from the real user TMPDIR. Always us
 ### Testing Ollama refinement without dictating
 ```bash
 curl -s http://localhost:11434/api/generate \
-  -d '{"model":"gemma3:4b","prompt":"<prompt>\n\n<test input>","stream":false}' \
+  -d '{"model":"qwen3:1.7b","prompt":"<prompt>\n\n<test input>","stream":false}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])"
 ```
 This lets you iterate on prompt wording without reloading Hammerspoon or dictating.

@@ -10,15 +10,19 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-OLLAMA_URL="http://localhost:11434/api/generate"
+OLLAMA_URL="http://localhost:11434/api/chat"
 CONFIG_DIR="$HOME/.thinking-out-loud"
 
-# Read model from config or use default
+# Read model from config (no hardcoded default — set it or pass MODEL=...)
 MODEL_FILE="$CONFIG_DIR/refine_model"
 if [[ -f "$MODEL_FILE" ]]; then
     MODEL=$(cat "$MODEL_FILE" | tr -d '[:space:]')
 fi
-MODEL="${MODEL:-gemma3:4b}"
+MODEL="${MODEL:-}"
+if [[ -z "$MODEL" ]]; then
+    echo -e "${RED}No refine model configured.${NC} Set one in $MODEL_FILE (e.g. 'qwen3:1.7b') or run: MODEL=<name> $0" >&2
+    exit 1
+fi
 
 # Read prompt from config or use default
 PROMPT_FILE="$CONFIG_DIR/refine_prompt"
@@ -64,35 +68,58 @@ PASS=0
 FAIL=0
 TOTAL=0
 
+# Mirrors the production refine path in hammerspoon/init.lua: POSTs to
+# /api/chat with the system prompt, the same few-shot demos as chat turns, and
+# the transcript as the final user message. The old /api/generate + single
+# concatenated prompt let small models parrot the prompt's inline example
+# instead of cleaning the input, so this harness must use the chat path too.
 call_ollama() {
     local input="$1"
-    local payload
-    payload=$(python3 -c "
-import json, sys
-print(json.dumps({
-    'model': '$MODEL',
-    'prompt': sys.stdin.read(),
-    'stream': False
-}))
-" <<< "$PROMPT
+    MODEL="$MODEL" PROMPT="$PROMPT" INPUT="$input" OLLAMA_URL="$OLLAMA_URL" python3 <<'PY'
+import json, os, urllib.request
 
-$input")
+model = os.environ["MODEL"]
+prompt = os.environ["PROMPT"]
+inp = os.environ["INPUT"]
 
-    local response
-    response=$(curl -s -X POST "$OLLAMA_URL" \
-        -H "Content-Type: application/json" \
-        -d "$payload" 2>/dev/null)
+# Few-shot demos — keep in sync with REFINE_EXAMPLES in hammerspoon/init.lua.
+examples = [
+    ("so um yeah i was thinking like maybe we could you know grab lunch tomorrow if you're free",
+     "So yeah, I was thinking maybe we could grab lunch tomorrow if you're free."),
+    ("run npm install then cd into src slash components and edit index dot tsx",
+     "Run npm install then cd into src/components and edit index.tsx."),
+    ("the flight is at seven am no actually six am on friday",
+     "The flight is at six am on Friday."),
+    ("remind me to uh call mom tomorrow at like three pm",
+     "Remind me to call mom tomorrow at three pm."),
+    ("what time is it in uh tokyo right now",
+     "What time is it in Tokyo right now?"),
+]
 
-    if [[ -z "$response" ]]; then
-        echo "ERROR: No response from Ollama"
-        return 1
-    fi
+messages = [{"role": "system", "content": prompt}]
+for u, a in examples:
+    messages.append({"role": "user", "content": u})
+    messages.append({"role": "assistant", "content": a})
+messages.append({"role": "user", "content": inp})
 
-    python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('response', '').strip())
-" <<< "$response"
+payload = json.dumps({
+    "model": model,
+    "messages": messages,
+    "stream": False,
+    "think": False,
+    "keep_alive": "10m",
+    "options": {"temperature": 0.2, "top_p": 0.9},
+}).encode()
+
+try:
+    req = urllib.request.Request(os.environ["OLLAMA_URL"], data=payload,
+                                 headers={"Content-Type": "application/json"})
+    data = json.load(urllib.request.urlopen(req, timeout=45))
+    print(data.get("message", {}).get("content", "").strip())
+except Exception as e:
+    print("ERROR: %s" % e)
+    raise SystemExit(1)
+PY
 }
 
 # Test case runner
@@ -154,7 +181,7 @@ echo -e "Model: ${BOLD}$MODEL${NC}"
 echo ""
 
 # Check Ollama is running
-if ! curl -s "$OLLAMA_URL" -d '{"model":"'$MODEL'","prompt":"hi","stream":false}' > /dev/null 2>&1; then
+if ! curl -s "$OLLAMA_URL" -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"hi"}],"stream":false}' > /dev/null 2>&1; then
     echo -e "${RED}Error: Ollama not reachable at $OLLAMA_URL${NC}"
     echo "Make sure Ollama is running: ollama serve"
     exit 1

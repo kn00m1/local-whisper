@@ -226,7 +226,7 @@ Pipe dictation through Ollama or any local command.
         if not payload then return end
         ctx:notify("Rewriting...")
         local ok, output = ctx:runShell(
-            'ollama run llama3.2 "Rewrite this as a professional email. Output only the rewritten text."',
+            'ollama run qwen3:1.7b "Rewrite this as a professional email. Output only the rewritten text."',
             payload
         )
         if ok and output and output:gsub("%s+", "") ~= "" then

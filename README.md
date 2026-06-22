@@ -91,7 +91,7 @@ cp hammerspoon/init.lua ~/.hammerspoon/init.lua
 ./uninstall.sh
 ```
 
-Removes Hammerspoon config, `~/.local-whisper/` settings, and temp files. Optionally removes `~/whisper.cpp`. Does not uninstall Homebrew packages.
+Removes Hammerspoon config, `~/.thinking-out-loud/` settings, and temp files. Optionally removes `~/whisper.cpp`. Does not uninstall Homebrew packages.
 
 ## Setup
 
@@ -137,7 +137,7 @@ All settings are accessible from the menu bar — no keyboard shortcuts needed.
 
 ## Custom vocabulary prompt
 
-Create `~/.local-whisper/prompt` with terms whisper should recognize better:
+Create `~/.thinking-out-loud/prompt` with terms whisper should recognize better:
 
 ```
 Claude, Hammerspoon, whisper.cpp, ffmpeg, macOS, Lua, Anthropic
@@ -150,7 +150,7 @@ This is passed as `--prompt` to whisper-cli for both partial and final transcrip
 If you have [Ollama](https://ollama.com) installed, you can enable LLM-powered text cleanup. After transcription, the text is sent to a local LLM that fixes punctuation, removes filler words, and formats numbered lists — all on-device.
 
 1. Install Ollama: `brew install ollama`
-2. Pull a model: `ollama pull gemma3:4b` (small, fast, good at text cleanup)
+2. Pull a refine model, e.g. `ollama pull qwen3:1.7b` (small, fast, and stays in cleanup mode instead of answering your dictation)
 3. Start Ollama: `ollama serve` (or `brew services start ollama`)
 4. Toggle in the menu bar or click **refine** in the overlay
 
@@ -160,9 +160,9 @@ Refinement only runs on text longer than 50 characters. Short dictations are ins
 
 | File | What it does |
 |------|-------------|
-| `~/.local-whisper/refine` | ON/OFF state (also togglable from menu bar / overlay) |
-| `~/.local-whisper/refine_model` | Ollama model to use (default: `gemma3:4b`) |
-| `~/.local-whisper/refine_prompt` | Custom instructions for the LLM |
+| `~/.thinking-out-loud/refine` | ON/OFF state (also togglable from menu bar / overlay) |
+| `~/.thinking-out-loud/refine_model` | Ollama model to use for refinement (must be pulled in Ollama first; no built-in default — refine is skipped if this is unset) |
+| `~/.thinking-out-loud/refine_prompt` | Custom instructions for the LLM |
 
 ## Faster live preview
 
@@ -251,7 +251,7 @@ local AUTO_STOP_THRESHOLD_DB = -40
 - **Trigger key does nothing**: Accessibility permission may need toggling. Go to System Settings > Privacy & Security > Accessibility, toggle Hammerspoon **OFF then ON**, then run `hs.reload()` in the Hammerspoon console
 - **External keyboard mapping**: Some keyboards (e.g., Logitech MX Keys) send non-standard modifier flags. Try different `TRIGGER_KEY` values (`rightAlt`, `rightCmd`, `rightCtrl`) in init.lua
 - **`hs` command not found**: Run `hs.ipc.cliInstall()` in Hammerspoon console
-- **Voice commands not triggering**: Check the log to see what whisper transcribed — add command words to `~/.local-whisper/prompt`
+- **Voice commands not triggering**: Check the log to see what whisper transcribed — add command words to `~/.thinking-out-loud/prompt`
 - **Overlay not appearing**: Hammerspoon may need Accessibility permission re-granted after updates
 
 ## Disclaimer

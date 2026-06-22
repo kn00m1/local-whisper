@@ -109,11 +109,13 @@ local AUTO_STOP_SILENCE_SECONDS = 3
 local AUTO_STOP_THRESHOLD_DB = -40
 
 -- LLM refinement (requires Ollama)
-local REFINE_DEFAULT_MODEL = "gemma3:4b"
+-- No hardcoded default model: the refine model is read from
+-- ~/.thinking-out-loud/refine_model. If that file is absent/empty, refinement
+-- is skipped (an in-app settings UI for choosing/installing models is planned).
 local REFINE_MIN_CHARS = 50  -- skip refinement for short text
--- Refine timeout scales with input length. Qwen 2.5 3B on M4 runs ~50 tok/s;
--- a paragraph-length output needs several seconds. Too-tight timeout causes
--- long dictations to silently fall back to raw text.
+-- Refine timeout scales with input length. A small refine model on M4 runs
+-- ~50 tok/s; a paragraph-length output needs several seconds. Too-tight
+-- timeout causes long dictations to silently fall back to raw text.
 local REFINE_TIMEOUT_BASE = 4.0     -- seconds baseline (cold + short text)
 local REFINE_TIMEOUT_PER_CHAR = 0.03  -- +30ms per input char
 local REFINE_TIMEOUT_MAX = 20.0     -- hard ceiling for very long dictations
@@ -169,7 +171,7 @@ local function getRefineModel()
         local val = f:read("*a"):gsub("%s+", ""); f:close()
         if val ~= "" then return val end
     end
-    return REFINE_DEFAULT_MODEL
+    return nil  -- no model configured; callers skip refinement
 end
 
 local function getRefinePrompt()
@@ -409,13 +411,13 @@ local REFINE_EXAMPLES = {
 }
 
 local function refineWithOllama(text, callback)
-    if not getRefineMode() or not hasOllama() or #text < REFINE_MIN_CHARS then
+    local model = getRefineModel()
+    if not getRefineMode() or not model or not hasOllama() or #text < REFINE_MIN_CHARS then
         callback(text)
         return
     end
     log("refine: sending to Ollama API (" .. #text .. " chars)")
     signalRefineState("refining", nil)
-    local model = getRefineModel()
     -- Build a chat conversation: system prompt, few-shot turns, then the real
     -- transcript as the final user message (uses /api/chat, not /api/generate).
     local messages = { { role = "system", content = getRefinePrompt() } }
@@ -428,7 +430,7 @@ local function refineWithOllama(text, callback)
         model = model,
         messages = messages,
         stream = false,
-        think = false,  -- thinking-capable models (qwen3.5, gemma4) stay terse
+        think = false,  -- thinking-capable models stay terse (no reasoning trace)
         keep_alive = REFINE_WARM_KEEP_ALIVE,
         -- Low-temperature, deterministic cleanup (matches Voicebox's tuned refine
         -- recipe). Sampling is not a quality lever here -- output is dominated by the
@@ -510,6 +512,7 @@ local function pingOllama()
     if not getRefineMode() then return end
     if not hasOllama() then return end
     local model = getRefineModel()
+    if not model then return end  -- nothing to keep warm without a configured model
     local payload = hs.json.encode({
         model = model,
         prompt = "",
@@ -1488,7 +1491,7 @@ local function buildMenuBarMenu()
     if hasOllama() then
         local refineState = getRefineMode() and "ON" or "OFF"
         table.insert(items, {
-            title = "LLM Refine: " .. refineState .. " (" .. getRefineModel() .. ")",
+            title = "LLM Refine: " .. refineState .. " (" .. (getRefineModel() or "no model set") .. ")",
             fn = function() cycleRefine(); updateMenuBar() end,
         })
     else
@@ -2367,7 +2370,7 @@ local function saveMeetingOutput(notes, callback)
     end
 
     -- Try to summarize with Ollama
-    if getRefineMode() and hasOllama() and #transcriptText > 100 then
+    if getRefineMode() and getRefineModel() and hasOllama() and #transcriptText > 100 then
         setNotepadStatus("Generating summary with Ollama...")
         local summaryPrompt = "Summarize this meeting transcript into: 1) Key Points (bullet list), 2) Action Items (bullet list), 3) Decisions Made (bullet list). Be concise. Output ONLY the summary in markdown format.\n\n" .. transcriptText:sub(1, 4000)
         local jsonPayload = hs.json.encode({

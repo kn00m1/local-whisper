@@ -384,6 +384,7 @@ local function refineWithOllama(text, callback)
         model = model,
         prompt = prompt,
         stream = false,
+        think = false,  -- thinking-capable models (qwen3.5, gemma4) stay terse
         keep_alive = REFINE_WARM_KEEP_ALIVE,
     })
     local tmpPayload = WHISPER_TMP .. "/refine_payload.json"
@@ -464,6 +465,7 @@ local function pingOllama()
         model = model,
         prompt = "",
         stream = false,
+        think = false,
         keep_alive = REFINE_WARM_KEEP_ALIVE,
     })
     local tmpPayload = WHISPER_TMP .. "/refine_warm.json"
@@ -1720,6 +1722,12 @@ end
 -- Auto-stop on silence
 --------------------------------------------------------------------------------
 
+-- Forward declaration: stopRecording is defined below in the start/stop section,
+-- but checkSilence calls it from a deferred ffmpeg callback. Without this, that
+-- call resolves to a nil global and the auto-stop path errors at runtime
+-- ("attempt to call a nil value (global 'stopRecording')").
+local stopRecording
+
 local function checkSilence()
     if not isRecording then return end
     local chunks = getChunkFiles()
@@ -1806,7 +1814,7 @@ local function startRecording()
     silenceTimer = hs.timer.doEvery(1.0, checkSilence)
 end
 
-local function stopRecording()
+stopRecording = function()
     if not isRecording then return end
     isRecording = false
     log("recording: stop")
@@ -2214,6 +2222,7 @@ local function saveMeetingOutput(notes, callback)
             model = getRefineModel(),
             prompt = summaryPrompt,
             stream = false,
+            think = false,
         })
         local tmpPayload = WHISPER_TMP .. "/meeting_summary_payload.json"
         local f = io.open(tmpPayload, "w")

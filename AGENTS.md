@@ -1,8 +1,8 @@
-# local-whisper — Agent Guidelines
+# Thinking Out Loud — Agent Guidelines
 
 ## Project overview
 
-local-whisper is a fully-local macOS dictation tool. Hold a modifier key to record, release to transcribe and insert text at cursor. Powered by whisper.cpp (C/C++, no Python) and Hammerspoon.
+Thinking Out Loud is a fully-local macOS dictation tool. Hold a modifier key to record, release to transcribe and insert text at cursor. Powered by whisper.cpp (C/C++, no Python) and Hammerspoon.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Everything runs inside `~/.hammerspoon/init.lua` — no external bash scripts at
 
 - `~/.hammerspoon/init.lua` — main config (overlay, recording, insertion, hotkeys, menu bar)
 - `~/.hammerspoon/local_whisper_actions.lua` — user voice commands (optional, auto-reloads)
-- `~/.local-whisper/` — all user settings (lang, model, output, prompt, recent dictations)
+- `~/.thinking-out-loud/` — all user settings (lang, model, output, prompt, recent dictations)
 - `~/whisper.cpp/build/bin/whisper-cli` — transcription binary
 - `~/whisper.cpp/models/` — whisper models (medium, tiny, etc.)
 - `$TMPDIR/whisper-dictate/` — all temp state (per-user private dir on macOS)
@@ -52,7 +52,7 @@ Note: `$TMPDIR` inside a sandbox may differ from the real user TMPDIR. Always us
 ### Testing Ollama refinement without dictating
 ```bash
 curl -s http://localhost:11434/api/generate \
-  -d '{"model":"gemma3:4b","prompt":"<prompt>\n\n<test input>","stream":false}' \
+  -d '{"model":"qwen3:1.7b","prompt":"<prompt>\n\n<test input>","stream":false}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])"
 ```
 This lets you iterate on prompt wording without reloading Hammerspoon or dictating.

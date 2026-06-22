@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — local-whisper installer
+# install.sh — Thinking Out Loud installer
 # Sets up everything needed for hold-to-dictate on macOS with whisper.cpp
 # Architecture: Hammerspoon-only (no Karabiner, no bash scripts at runtime)
 set -euo pipefail
@@ -27,7 +27,7 @@ HAMMERSPOON_DIR="$HOME/.hammerspoon"
 
 # ─── Preflight ───────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}local-whisper installer${NC}"
+echo -e "${BOLD}Thinking Out Loud installer${NC}"
 echo -e "Hold a key → speak → release → text at cursor"
 echo ""
 
@@ -148,14 +148,17 @@ info "Step 4/6: Setting up Hammerspoon..."
 mkdir -p "$HAMMERSPOON_DIR"
 
 # Create config directory for user settings
-CONFIG_DIR="$HOME/.local-whisper"
+CONFIG_DIR="$HOME/.thinking-out-loud"
 mkdir -p "$CONFIG_DIR"
 ok "Config directory: $CONFIG_DIR"
 
 if [[ -f "$HAMMERSPOON_DIR/init.lua" ]]; then
-    if grep -q "local-whisper" "$HAMMERSPOON_DIR/init.lua"; then
+    # Detect a managed install by either brand marker. "thinking-out-loud" is the
+    # durable anchor (CONFIG_DIR + paths in init.lua); "local-whisper" preserves
+    # backward-compat with pre-rebrand installs.
+    if grep -qE "local-whisper|thinking-out-loud" "$HAMMERSPOON_DIR/init.lua"; then
         # Existing local-whisper config — update it but preserve user settings
-        # (user settings live in ~/.local-whisper/, not in init.lua)
+        # (user settings live in ~/.thinking-out-loud/, not in init.lua)
         cp "$SCRIPT_DIR/hammerspoon/init.lua" "$HAMMERSPOON_DIR/init.lua"
         ok "Hammerspoon config updated"
     else

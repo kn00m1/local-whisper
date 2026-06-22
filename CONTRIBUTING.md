@@ -1,4 +1,4 @@
-# Contributing to local-whisper
+# Contributing to Thinking Out Loud
 
 Thanks for your interest in contributing! This project is small and focused — PRs and issues are welcome.
 

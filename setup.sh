@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — post-install setup for local-whisper
+# setup.sh — post-install setup for Thinking Out Loud
 # Configures: trigger key, audio device, permissions, Hammerspoon CLI
 # Architecture: Hammerspoon-only (everything runs in init.lua)
 set -euo pipefail
@@ -21,7 +21,7 @@ HAMMERSPOON_DIR="$HOME/.hammerspoon"
 INIT_LUA="$HAMMERSPOON_DIR/init.lua"
 
 echo ""
-echo -e "${BOLD}local-whisper setup${NC}"
+echo -e "${BOLD}Thinking Out Loud setup${NC}"
 echo ""
 
 if [[ ! -f "$INIT_LUA" ]]; then

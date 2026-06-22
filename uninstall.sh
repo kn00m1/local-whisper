@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uninstall.sh — remove local-whisper from your system
+# uninstall.sh — remove Thinking Out Loud from your system
 set -euo pipefail
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
@@ -15,14 +15,14 @@ ok()    { echo -e "${GREEN}[+]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 
 HAMMERSPOON_DIR="$HOME/.hammerspoon"
-CONFIG_DIR="$HOME/.local-whisper"
+CONFIG_DIR="$HOME/.thinking-out-loud"
 WHISPER_CPP_DIR="$HOME/whisper.cpp"
 WHISPER_TMP="${TMPDIR:-/tmp}/whisper-dictate"
 
 echo ""
-echo -e "${BOLD}local-whisper uninstaller${NC}"
+echo -e "${BOLD}Thinking Out Loud uninstaller${NC}"
 echo ""
-echo "This will remove local-whisper configuration files."
+echo "This will remove Thinking Out Loud configuration files."
 echo "It will NOT uninstall Homebrew packages (ffmpeg, cmake, hammerspoon)."
 echo ""
 read -r -p "Continue? [y/N] " CONFIRM
@@ -34,7 +34,8 @@ fi
 echo ""
 
 # ─── Hammerspoon config ─────────────────────────────────────────────────────
-if [[ -f "$HAMMERSPOON_DIR/init.lua" ]] && grep -q "local-whisper" "$HAMMERSPOON_DIR/init.lua"; then
+# Match either brand marker; "thinking-out-loud" is the durable anchor, "local-whisper" covers pre-rebrand installs.
+if [[ -f "$HAMMERSPOON_DIR/init.lua" ]] && grep -qE "local-whisper|thinking-out-loud" "$HAMMERSPOON_DIR/init.lua"; then
     rm "$HAMMERSPOON_DIR/init.lua"
     ok "Removed ~/.hammerspoon/init.lua"
 
@@ -43,7 +44,7 @@ if [[ -f "$HAMMERSPOON_DIR/init.lua" ]] && grep -q "local-whisper" "$HAMMERSPOON
         ok "Restored init.lua.backup"
     fi
 else
-    info "No local-whisper init.lua found (skipped)"
+    info "No Thinking Out Loud init.lua found (skipped)"
 fi
 
 if [[ -f "$HAMMERSPOON_DIR/local_whisper_actions.lua" ]]; then
@@ -54,7 +55,7 @@ fi
 # ─── Config directory ────────────────────────────────────────────────────────
 if [[ -d "$CONFIG_DIR" ]]; then
     rm -rf "$CONFIG_DIR"
-    ok "Removed ~/.local-whisper/"
+    ok "Removed ~/.thinking-out-loud/"
 fi
 
 # ─── Temp files ──────────────────────────────────────────────────────────────

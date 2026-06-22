@@ -1,5 +1,5 @@
 -- Copy to: ~/.hammerspoon/local_whisper_actions.lua
--- Voice commands for local-whisper dictation.
+-- Voice commands for Thinking Out Loud dictation.
 -- All commands start with "voice command" to prevent false matches on normal speech.
 --
 -- Hooks:

@@ -1,6 +1,6 @@
 # Voice Commands Guide
 
-local-whisper can do more than insert text. With action hooks, you can turn spoken phrases into commands — save notes, launch apps, pipe text through a local LLM, or trigger any Hammerspoon automation.
+Thinking Out Loud can do more than insert text. With action hooks, you can turn spoken phrases into commands — save notes, launch apps, pipe text through a local LLM, or trigger any Hammerspoon automation.
 
 This guide explains how to create your own voice commands.
 
@@ -17,7 +17,7 @@ cp hammerspoon/local_whisper_actions.example.lua ~/.hammerspoon/local_whisper_ac
 
 ## How it works
 
-After whisper transcribes your speech, local-whisper runs your hooks before inserting the text:
+After whisper transcribes your speech, Thinking Out Loud runs your hooks before inserting the text:
 
 ```
 Speech → whisper → post-processing → beforeInsert → actions[] → insert at cursor → afterInsert
@@ -47,7 +47,7 @@ The key challenge: whisper needs to transcribe your command phrase reliably. Her
 
 ### Tip: add commands to your vocabulary prompt
 
-If whisper keeps mishearing your command word, add it to `~/.local-whisper/prompt`:
+If whisper keeps mishearing your command word, add it to `~/.thinking-out-loud/prompt`:
 
 ```
 note, todo, journal, rewrite, open app, search
@@ -226,7 +226,7 @@ Pipe dictation through Ollama or any local command.
         if not payload then return end
         ctx:notify("Rewriting...")
         local ok, output = ctx:runShell(
-            'ollama run llama3.2 "Rewrite this as a professional email. Output only the rewritten text."',
+            'ollama run qwen3:1.7b "Rewrite this as a professional email. Output only the rewritten text."',
             payload
         )
         if ok and output and output:gsub("%s+", "") ~= "" then

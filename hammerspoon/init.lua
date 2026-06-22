@@ -430,6 +430,10 @@ local function refineWithOllama(text, callback)
         stream = false,
         think = false,  -- thinking-capable models (qwen3.5, gemma4) stay terse
         keep_alive = REFINE_WARM_KEEP_ALIVE,
+        -- Low-temperature, deterministic cleanup (matches Voicebox's tuned refine
+        -- recipe). Sampling is not a quality lever here -- output is dominated by the
+        -- system prompt + few-shot -- so low temp is chosen for reproducibility.
+        options = { temperature = 0.2, top_p = 0.9 },
     })
     local tmpPayload = WHISPER_TMP .. "/refine_payload.json"
     local f = io.open(tmpPayload, "w")

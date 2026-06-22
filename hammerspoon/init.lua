@@ -1722,6 +1722,12 @@ end
 -- Auto-stop on silence
 --------------------------------------------------------------------------------
 
+-- Forward declaration: stopRecording is defined below in the start/stop section,
+-- but checkSilence calls it from a deferred ffmpeg callback. Without this, that
+-- call resolves to a nil global and the auto-stop path errors at runtime
+-- ("attempt to call a nil value (global 'stopRecording')").
+local stopRecording
+
 local function checkSilence()
     if not isRecording then return end
     local chunks = getChunkFiles()
@@ -1808,7 +1814,7 @@ local function startRecording()
     silenceTimer = hs.timer.doEvery(1.0, checkSilence)
 end
 
-local function stopRecording()
+stopRecording = function()
     if not isRecording then return end
     isRecording = false
     log("recording: stop")

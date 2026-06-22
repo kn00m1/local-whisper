@@ -153,7 +153,10 @@ mkdir -p "$CONFIG_DIR"
 ok "Config directory: $CONFIG_DIR"
 
 if [[ -f "$HAMMERSPOON_DIR/init.lua" ]]; then
-    if grep -q "local-whisper" "$HAMMERSPOON_DIR/init.lua"; then
+    # Detect a managed install by either brand marker. "thinking-out-loud" is the
+    # durable anchor (CONFIG_DIR + paths in init.lua); "local-whisper" preserves
+    # backward-compat with pre-rebrand installs.
+    if grep -qE "local-whisper|thinking-out-loud" "$HAMMERSPOON_DIR/init.lua"; then
         # Existing local-whisper config — update it but preserve user settings
         # (user settings live in ~/.thinking-out-loud/, not in init.lua)
         cp "$SCRIPT_DIR/hammerspoon/init.lua" "$HAMMERSPOON_DIR/init.lua"

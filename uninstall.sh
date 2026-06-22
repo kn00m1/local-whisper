@@ -34,7 +34,8 @@ fi
 echo ""
 
 # ─── Hammerspoon config ─────────────────────────────────────────────────────
-if [[ -f "$HAMMERSPOON_DIR/init.lua" ]] && grep -q "local-whisper" "$HAMMERSPOON_DIR/init.lua"; then
+# Match either brand marker; "thinking-out-loud" is the durable anchor, "local-whisper" covers pre-rebrand installs.
+if [[ -f "$HAMMERSPOON_DIR/init.lua" ]] && grep -qE "local-whisper|thinking-out-loud" "$HAMMERSPOON_DIR/init.lua"; then
     rm "$HAMMERSPOON_DIR/init.lua"
     ok "Removed ~/.hammerspoon/init.lua"
 

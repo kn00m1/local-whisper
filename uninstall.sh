@@ -15,7 +15,7 @@ ok()    { echo -e "${GREEN}[+]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 
 HAMMERSPOON_DIR="$HOME/.hammerspoon"
-CONFIG_DIR="$HOME/.local-whisper"
+CONFIG_DIR="$HOME/.thinking-out-loud"
 WHISPER_CPP_DIR="$HOME/whisper.cpp"
 WHISPER_TMP="${TMPDIR:-/tmp}/whisper-dictate"
 
@@ -54,7 +54,7 @@ fi
 # ─── Config directory ────────────────────────────────────────────────────────
 if [[ -d "$CONFIG_DIR" ]]; then
     rm -rf "$CONFIG_DIR"
-    ok "Removed ~/.local-whisper/"
+    ok "Removed ~/.thinking-out-loud/"
 fi
 
 # ─── Temp files ──────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-# local-whisper
+# Thinking Out Loud
 
 A fast, fully-local speech-to-text dictation tool for macOS with voice commands, powered by [whisper.cpp](https://github.com/ggml-org/whisper.cpp). No subscriptions, no cloud — just local transcription optimized for Apple Silicon.
 
@@ -47,7 +47,7 @@ For a full guide on writing custom commands, see **[docs/VOICE_COMMANDS.md](docs
 ## Install
 
 ```bash
-git clone https://github.com/luisalima/local-whisper.git && cd local-whisper && ./install.sh
+git clone https://github.com/kn00m1/thinking-out-loud.git && cd thinking-out-loud && ./install.sh
 ```
 
 The installer handles everything: Homebrew dependencies, building whisper.cpp, downloading models, and setting up Hammerspoon. It then runs `setup.sh` which walks you through choosing your trigger key, microphone, and granting permissions.

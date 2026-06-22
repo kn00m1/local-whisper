@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — local-whisper installer
+# install.sh — Thinking Out Loud installer
 # Sets up everything needed for hold-to-dictate on macOS with whisper.cpp
 # Architecture: Hammerspoon-only (no Karabiner, no bash scripts at runtime)
 set -euo pipefail
@@ -27,7 +27,7 @@ HAMMERSPOON_DIR="$HOME/.hammerspoon"
 
 # ─── Preflight ───────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}local-whisper installer${NC}"
+echo -e "${BOLD}Thinking Out Loud installer${NC}"
 echo -e "Hold a key → speak → release → text at cursor"
 echo ""
 

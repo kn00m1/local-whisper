@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uninstall.sh — remove local-whisper from your system
+# uninstall.sh — remove Thinking Out Loud from your system
 set -euo pipefail
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
@@ -20,9 +20,9 @@ WHISPER_CPP_DIR="$HOME/whisper.cpp"
 WHISPER_TMP="${TMPDIR:-/tmp}/whisper-dictate"
 
 echo ""
-echo -e "${BOLD}local-whisper uninstaller${NC}"
+echo -e "${BOLD}Thinking Out Loud uninstaller${NC}"
 echo ""
-echo "This will remove local-whisper configuration files."
+echo "This will remove Thinking Out Loud configuration files."
 echo "It will NOT uninstall Homebrew packages (ffmpeg, cmake, hammerspoon)."
 echo ""
 read -r -p "Continue? [y/N] " CONFIRM
@@ -44,7 +44,7 @@ if [[ -f "$HAMMERSPOON_DIR/init.lua" ]] && grep -qE "local-whisper|thinking-out-
         ok "Restored init.lua.backup"
     fi
 else
-    info "No local-whisper init.lua found (skipped)"
+    info "No Thinking Out Loud init.lua found (skipped)"
 fi
 
 if [[ -f "$HAMMERSPOON_DIR/local_whisper_actions.lua" ]]; then

@@ -176,7 +176,7 @@ test_case() {
 
 # ─── Preflight ────────────────────────────────────────────────────────────────
 
-echo -e "${BOLD}local-whisper refine eval suite${NC}"
+echo -e "${BOLD}Thinking Out Loud refine eval suite${NC}"
 echo -e "Model: ${BOLD}$MODEL${NC}"
 echo ""
 

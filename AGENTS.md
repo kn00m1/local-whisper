@@ -1,8 +1,8 @@
-# local-whisper — Agent Guidelines
+# Thinking Out Loud — Agent Guidelines
 
 ## Project overview
 
-local-whisper is a fully-local macOS dictation tool. Hold a modifier key to record, release to transcribe and insert text at cursor. Powered by whisper.cpp (C/C++, no Python) and Hammerspoon.
+Thinking Out Loud is a fully-local macOS dictation tool. Hold a modifier key to record, release to transcribe and insert text at cursor. Powered by whisper.cpp (C/C++, no Python) and Hammerspoon.
 
 ## Architecture
 

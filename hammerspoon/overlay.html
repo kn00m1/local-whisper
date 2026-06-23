@@ -53,6 +53,70 @@
     to   { opacity: 1; }
   }
 
+  /* Editable review box — theme-independent dark glass, same legibility
+     rationale as .transcript-card. Shown only in body.editing. */
+  .editor {
+    display: none;
+    width: 304px; max-width: 304px;   /* = pill's rendered footprint (260 content + 44 pad) */
+    min-height: 46px;                 /* = pill height; box grows downward to fit */
+    box-sizing: border-box;
+    padding: 10px 14px;
+    border: none; border-radius: 14px;
+    background: rgba(20, 20, 22, 0.82);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35),
+                inset 0 0 0 0.5px rgba(255,255,255,0.14),
+                0 0 0 2px rgba(120,170,255,0.0);
+    color: #f4f4f5;
+    font-family: -apple-system, "SF Pro Display", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5; letter-spacing: 0.01em;
+    resize: none; overflow: hidden;   /* JS auto-grows; window grows with it */
+    outline: none;
+    transition: box-shadow 0.15s ease;
+  }
+  .editor:focus {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35),
+                inset 0 0 0 0.5px rgba(255,255,255,0.14),
+                0 0 0 2px rgba(120,170,255,0.55);
+  }
+  .editor::-webkit-scrollbar { width: 0; }
+  body.editing .editor { display: block; }
+  /* In editing state the streaming card and the recording pill step aside. */
+  body.editing .transcript-card,
+  body.editing .overlay { display: none; }
+
+  .actions {
+    display: none;
+    width: 304px; box-sizing: border-box;   /* match editor + pill width */
+    align-items: center; gap: 8px;
+    padding: 0 2px;
+  }
+  body.editing .actions { display: flex; }
+  /* Exit animation: editor + buttons fade/drop out before Lua deletes the window. */
+  body.closing .editor,
+  body.closing .actions {
+    opacity: 0;
+    transform: translateY(2px);
+    transition: opacity 0.13s ease-in, transform 0.13s ease-in;
+  }
+  .btn {
+    font-family: -apple-system, system-ui, sans-serif;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.01em;
+    padding: 7px 14px; border-radius: 10px;
+    border: 0.5px solid rgba(255,255,255,0.14);
+    background: rgba(40, 40, 46, 0.9);
+    color: #f4f4f5; cursor: pointer;
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    transition: background 0.12s ease, transform 0.06s ease;
+  }
+  .btn:hover { background: rgba(58, 58, 66, 0.95); }
+  .btn:active { transform: translateY(0.5px); }
+  .btn-paste { background: rgba(48, 110, 230, 0.92); border-color: rgba(120,170,255,0.5); }
+  .btn-paste:hover { background: rgba(58, 126, 250, 0.98); }
+  .btn-close { margin-left: auto; padding: 7px 10px; }
+  .btn-copy.copied { background: rgba(40, 160, 90, 0.95); }
+
   /* ─── Shared primitives ─────────────────────────────────────── */
   .overlay {
     display: flex; align-items: center;
@@ -284,6 +348,12 @@
 </head>
 <body class="theme-liquid">
   <div class="transcript-card"></div>
+  <textarea class="editor" spellcheck="false"></textarea>
+  <div class="actions">
+    <button class="btn btn-copy" type="button">Copy</button>
+    <button class="btn btn-paste" type="button">Paste</button>
+    <button class="btn btn-close" type="button" title="Close (Esc)" aria-label="Close">✕</button>
+  </div>
   <div class="overlay">
     <div class="dot"></div>
     <div class="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
@@ -356,7 +426,116 @@
         setTimeout(() => b.classList.remove("refine-error"), 1500);
       }
     },
+    // Hand off from the streaming card to a real editable textbox, morphing up
+    // from the pill footprint. maxPx (from Lua) = max editor height before it
+    // scrolls internally (70% screen - chrome).
+    enterEdit(text, maxPx) {
+      const ta = document.querySelector(".editor");
+      const actions = document.querySelector(".actions");
+      ta.value = text || "";
+      this._maxEditorPx = (maxPx && maxPx > 80) ? maxPx : 100000;
+      document.body.classList.add("editing");
+      document.body.classList.remove("has-transcript");
+
+      // Measure final content height, then resize the (invisible) window to it
+      // instantly — animating an NSWindow frame would reflow WKWebView per frame.
+      // The visible growth is the CSS height transition below.
+      ta.style.height = "auto";
+      const need = ta.scrollHeight;
+      const finalH = Math.min(need, this._maxEditorPx);
+      ta.style.overflowY = need > this._maxEditorPx ? "auto" : "hidden";
+      this._sendResizeFor(finalH);
+
+      // Morph: start collapsed at the pill height with buttons faded out, then
+      // unfurl upward to finalH while the buttons fade in.
+      const PILL_H = 46;
+      ta.style.transition = "none";
+      ta.style.height = PILL_H + "px";
+      if (actions) { actions.style.transition = "none"; actions.style.opacity = "0"; }
+      void ta.offsetHeight;                       // commit the collapsed start state
+      ta.style.transition = "height 0.18s cubic-bezier(0.2,0.7,0.2,1)";
+      if (actions) actions.style.transition = "opacity 0.2s ease 0.05s";
+      requestAnimationFrame(() => {
+        ta.style.height = finalH + "px";          // animates 46 -> finalH
+        if (actions) actions.style.opacity = "1";
+      });
+      // Drop the inline transitions afterward so per-keystroke autogrow stays instant.
+      setTimeout(() => {
+        ta.style.transition = "";
+        if (actions) actions.style.transition = "";
+      }, 260);
+
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = ta.value.length;   // caret at end
+    },
+    // Play the exit animation; Lua deletes the window ~0.15s later.
+    playExit() {
+      document.body.classList.add("closing");
+    },
+    flashCopied() {
+      const b = document.querySelector(".btn-copy");
+      if (!b) return;
+      const old = b.textContent;
+      b.classList.add("copied"); b.textContent = "Copied ✓";
+      setTimeout(() => { b.classList.remove("copied"); b.textContent = old; }, 1200);
+    },
+    _send(msg) {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.lw) {
+        window.webkit.messageHandlers.lw.postMessage(msg);
+      }
+    },
+    // Window height (px) to show an editor of `editorH` px plus chrome. body is
+    // height:100vh so document.body.scrollHeight is viewport-clamped and can't
+    // drive this — compute it explicitly.
+    // Layout: body padding-top(10) + editor + gap(8) + actions + padding-bottom(14).
+    _windowHeightFor(editorH) {
+      const actions = document.querySelector(".actions");
+      return Math.ceil(10 + editorH + 8 + (actions ? actions.offsetHeight : 30) + 14);
+    },
+    _sendResizeFor(editorH) {
+      this._send({ action: "resize", h: this._windowHeightFor(editorH) });
+    },
+    _autogrow() {
+      const ta = document.querySelector(".editor");
+      if (!ta || !document.body.classList.contains("editing")) return;
+      ta.style.height = "auto";
+      const max = this._maxEditorPx || 100000;
+      const need = ta.scrollHeight;                 // natural content height
+      const h = Math.min(need, max);
+      ta.style.height = h + "px";
+      ta.style.overflowY = need > max ? "auto" : "hidden";  // scroll only past the cap
+      this._sendResizeFor(h);
+    },
   };
+
+  // Action-bar + keyboard wiring for edit mode.
+  (function() {
+    const ta = document.querySelector(".editor");
+    const val = () => document.querySelector(".editor").value;
+    document.querySelector(".btn-copy").addEventListener("click", () => {
+      window.lw._send({ action: "copy", text: val() });
+      window.lw.flashCopied();
+    });
+    document.querySelector(".btn-paste").addEventListener("click", () => {
+      window.lw._send({ action: "paste", text: val() });
+    });
+    document.querySelector(".btn-close").addEventListener("click", () => {
+      window.lw._send({ action: "close", text: val() });
+    });
+    ta.addEventListener("input", () => window.lw._autogrow());
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); window.lw._send({ action: "close", text: val() }); }
+      else if (e.key === "Enter" && e.metaKey) { e.preventDefault(); window.lw._send({ action: "paste", text: val() }); }
+    });
+    // Click-to-edit: a plain click on the read-only transcript card (OFF-mode grace) asks Lua to
+    // enter edit. Use a *plain* click — the dictation trigger is a held modifier (e.g. Right Ctrl),
+    // so holding it while clicking starts a NEW recording instead. contextmenu is bound too so a
+    // mouse right-click also works (and is harmless on the read-only card).
+    const card = document.querySelector(".transcript-card");
+    const reqEditStart = (e) => { if (e) e.preventDefault(); window.lw._send({ action: "editstart" }); };
+    card.addEventListener("click", reqEditStart);
+    card.addEventListener("contextmenu", reqEditStart);
+  })();
 
   // Audio-reactive waveform. Lua calls window.lw.level(0..1) at ~20Hz from the
   // ffmpeg astats stream callback. Each call advances a ring buffer; bars show

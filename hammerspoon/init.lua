@@ -1049,6 +1049,8 @@ local overlayEnterEdit          -- flip overlay to editable review mode
 -- {raw, refined, lang, app, model, time, copied}. Declared here so both the
 -- message handler (above finishInsertion) and finishInsertion share one upvalue.
 local pendingDictation = nil
+local recordDictation           -- append a history entry (assigned after saveRecentDictations)
+local lastInsertedText = nil    -- undo state (shared by finishInsertion + edit-mode paste)
 
 -- Lua → JS bridge. Safe against missing overlay.
 local function jsEval(code)
@@ -1131,6 +1133,11 @@ local function hideOverlay()
 end
 
 local function forceHideOverlay()
+    -- Persist an abandoned edit-mode record so an interrupted dictation isn't lost.
+    if pendingDictation then
+        recordDictation(pendingDictation, nil, pendingDictation.copied and "copied" or "dismissed")
+        pendingDictation = nil
+    end
     overlayPinned = false
     overlayEditable = false
     if overlay then overlay:delete(); overlay = nil end
@@ -1187,13 +1194,49 @@ handleOverlayMessage = function(msg)
     local action = body.action
     if action == "resize" then
         if overlayEditable and body.h then resizeOverlayToContent(body.h) end
+
     elseif action == "copy" then
         if body.text then hs.pasteboard.setContents(body.text) end
+        if pendingDictation then pendingDictation.copied = true end
         log("edit: copy (" .. #(body.text or "") .. " chars)")
+
     elseif action == "paste" then
-        log("edit: paste requested")
+        local text = body.text or ""
+        local rec = pendingDictation
+        pendingDictation = nil
+        hs.pasteboard.setContents(text)
+        lastInsertedText = text
+        overlayPinned = false
+        overlayEditable = false
+        if overlay then overlay:delete(); overlay = nil end
+        -- Restore the app we recorded from, then synthesize the paste.
+        hs.timer.doAfter(0.05, function()
+            if capturedAppBundleID then
+                local app = hs.application.applicationsForBundleID(capturedAppBundleID)[1]
+                if app then app:activate() end
+            end
+            hs.timer.doAfter(0.12, function()
+                hs.eventtap.keyStroke({ "cmd" }, "v")
+                if getEnterMode() then
+                    hs.timer.doAfter(0.15, function() hs.eventtap.keyStroke({}, "return") end)
+                end
+            end)
+        end)
+        if rec then recordDictation(rec, text, "pasted") end
+        log("edit: pasted into " .. tostring(capturedAppName))
+
     elseif action == "close" then
-        log("edit: close requested")
+        local text = body.text or ""
+        local rec = pendingDictation
+        pendingDictation = nil
+        overlayPinned = false
+        overlayEditable = false
+        if overlay then overlay:delete(); overlay = nil end
+        if rec then
+            recordDictation(rec, text, rec.copied and "copied" or "dismissed")
+        end
+        log("edit: closed (" .. ((rec and rec.copied) and "copied" or "dismissed") .. ")")
+
     elseif action == "editstart" then
         log("edit: editstart (click-to-edit)")
     end
@@ -1302,8 +1345,6 @@ local recordingStartTime = 0
 local pulseAlpha = 1.0
 local pulseFading = true
 
--- Undo state
-local lastInsertedText = nil
 
 -- Dictation history (newest first, persisted to ~/.thinking-out-loud/history.json
 -- at `P.historyFile`). Replaces the previous "recent.json" 10-entry cap.
@@ -1796,6 +1837,28 @@ local function insertTextAtCursor(text, mode)
     end
 end
 
+-- Append one history entry. `rec` = {raw, refined, lang, app, model, time};
+-- `edited` = the user's final box text (stored only if it differs from what was
+-- shown); `output` = "pasted" | "copied" | "dismissed". Single writer for both
+-- the normal and edit-mode paths.
+recordDictation = function(rec, edited, output)
+    local shown = rec.refined or rec.raw
+    table.insert(recentDictations, 1, {
+        text     = rec.raw,
+        refined  = rec.refined,
+        edited   = (edited and edited ~= shown) and edited or nil,
+        output   = output,
+        time     = rec.time or os.time(),
+        inserted = (output == "pasted"),
+        app      = rec.app or "?",
+        model    = rec.model or getModelName(),
+        chars    = #(rec.raw or ""),
+        lang     = rec.lang or getLang(),
+    })
+    while #recentDictations > MAX_RECENT do table.remove(recentDictations) end
+    saveRecentDictations()
+end
+
 -- Finish insertion after all processing (post-process, refine, hooks).
 -- preRefineText: the post-processed whisper output BEFORE refine ran. Only set
 -- when refine actually ran, so history can distinguish original vs refined.
@@ -1851,21 +1914,15 @@ local function finishInsertion(text, detectedLang, preRefineText)
     ctx.text = finalText
     runPostInsertActions(ctx)
 
-    -- Track in history
-    table.insert(recentDictations, 1, {
-        text = ctx.originalText,
-        refined = ctx.text ~= ctx.originalText and ctx.text or nil,
-        time = os.time(),
-        inserted = ctx.inserted,
-        app = capturedAppName or "?",
-        model = getModelName(),
-        chars = #(ctx.originalText or ""),
-        lang = detectedLang or getLang(),
-    })
-    while #recentDictations > MAX_RECENT do
-        table.remove(recentDictations)
-    end
-    saveRecentDictations()
+    -- Track in history (single writer; adds output + edited fields)
+    recordDictation(
+        { raw = ctx.originalText or finalText,
+          refined = (ctx.text ~= ctx.originalText) and ctx.text or nil,
+          lang = detectedLang or getLang(), app = capturedAppName or "?",
+          model = getModelName(), time = os.time() },
+        nil,
+        ctx.inserted and "pasted" or "dismissed"
+    )
 
     local display = finalText
     if detectedLang then display = display .. " [" .. detectedLang:upper() .. "]" end

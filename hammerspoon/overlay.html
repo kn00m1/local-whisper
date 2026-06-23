@@ -53,6 +53,63 @@
     to   { opacity: 1; }
   }
 
+  /* Editable review box — theme-independent dark glass, same legibility
+     rationale as .transcript-card. Shown only in body.editing. */
+  .editor {
+    display: none;
+    width: 360px; max-width: 360px;
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 10px 14px;
+    border: none; border-radius: 14px;
+    background: rgba(20, 20, 22, 0.82);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35),
+                inset 0 0 0 0.5px rgba(255,255,255,0.14),
+                0 0 0 2px rgba(120,170,255,0.0);
+    color: #f4f4f5;
+    font-family: -apple-system, "SF Pro Display", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5; letter-spacing: 0.01em;
+    resize: none; overflow: hidden;   /* JS auto-grows; window grows with it */
+    outline: none;
+    transition: box-shadow 0.15s ease;
+  }
+  .editor:focus {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35),
+                inset 0 0 0 0.5px rgba(255,255,255,0.14),
+                0 0 0 2px rgba(120,170,255,0.55);
+  }
+  .editor::-webkit-scrollbar { width: 0; }
+  body.editing .editor { display: block; }
+  /* In editing state the streaming card and the recording pill step aside. */
+  body.editing .transcript-card,
+  body.editing .overlay { display: none; }
+
+  .actions {
+    display: none;
+    width: 360px; box-sizing: border-box;
+    align-items: center; gap: 8px;
+    padding: 0 2px;
+  }
+  body.editing .actions { display: flex; }
+  .btn {
+    font-family: -apple-system, system-ui, sans-serif;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.01em;
+    padding: 7px 14px; border-radius: 10px;
+    border: 0.5px solid rgba(255,255,255,0.14);
+    background: rgba(40, 40, 46, 0.9);
+    color: #f4f4f5; cursor: pointer;
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    transition: background 0.12s ease, transform 0.06s ease;
+  }
+  .btn:hover { background: rgba(58, 58, 66, 0.95); }
+  .btn:active { transform: translateY(0.5px); }
+  .btn-paste { background: rgba(48, 110, 230, 0.92); border-color: rgba(120,170,255,0.5); }
+  .btn-paste:hover { background: rgba(58, 126, 250, 0.98); }
+  .btn-close { margin-left: auto; padding: 7px 10px; }
+  .btn-copy.copied { background: rgba(40, 160, 90, 0.95); }
+
   /* ─── Shared primitives ─────────────────────────────────────── */
   .overlay {
     display: flex; align-items: center;
@@ -284,6 +341,12 @@
 </head>
 <body class="theme-liquid">
   <div class="transcript-card"></div>
+  <textarea class="editor" spellcheck="false"></textarea>
+  <div class="actions">
+    <button class="btn btn-copy" type="button">Copy</button>
+    <button class="btn btn-paste" type="button">Paste</button>
+    <button class="btn btn-close" type="button" title="Close (Esc)" aria-label="Close">✕</button>
+  </div>
   <div class="overlay">
     <div class="dot"></div>
     <div class="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
@@ -356,7 +419,63 @@
         setTimeout(() => b.classList.remove("refine-error"), 1500);
       }
     },
+    // Hand off from the streaming card to a real editable textbox.
+    enterEdit(text) {
+      const ta = document.querySelector(".editor");
+      ta.value = text || "";
+      document.body.classList.add("editing");
+      document.body.classList.remove("has-transcript");
+      this._autogrow();
+      ta.focus();
+      // place caret at end
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+    },
+    flashCopied() {
+      const b = document.querySelector(".btn-copy");
+      if (!b) return;
+      const old = b.textContent;
+      b.classList.add("copied"); b.textContent = "Copied ✓";
+      setTimeout(() => { b.classList.remove("copied"); b.textContent = old; }, 1200);
+    },
+    _send(msg) {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.lw) {
+        window.webkit.messageHandlers.lw.postMessage(msg);
+      }
+    },
+    _autogrow() {
+      const ta = document.querySelector(".editor");
+      if (!ta || !document.body.classList.contains("editing")) return;
+      ta.style.height = "auto";
+      ta.style.height = ta.scrollHeight + "px";
+      // Report desired total page height so Lua can resize the window.
+      this._send({ action: "resize", h: Math.ceil(document.body.scrollHeight) });
+    },
   };
+
+  // Action-bar + keyboard wiring for edit mode.
+  (function() {
+    const ta = document.querySelector(".editor");
+    const val = () => document.querySelector(".editor").value;
+    document.querySelector(".btn-copy").addEventListener("click", () => {
+      window.lw._send({ action: "copy", text: val() });
+      window.lw.flashCopied();
+    });
+    document.querySelector(".btn-paste").addEventListener("click", () => {
+      window.lw._send({ action: "paste", text: val() });
+    });
+    document.querySelector(".btn-close").addEventListener("click", () => {
+      window.lw._send({ action: "close", text: val() });
+    });
+    ta.addEventListener("input", () => window.lw._autogrow());
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); window.lw._send({ action: "close", text: val() }); }
+      else if (e.key === "Enter" && e.metaKey) { e.preventDefault(); window.lw._send({ action: "paste", text: val() }); }
+    });
+    // Click-to-edit: a click on the read-only transcript card (OFF-mode grace) asks Lua to enter edit.
+    document.querySelector(".transcript-card").addEventListener("click", () => {
+      window.lw._send({ action: "editstart" });
+    });
+  })();
 
   // Audio-reactive waveform. Lua calls window.lw.level(0..1) at ~20Hz from the
   // ffmpeg astats stream callback. Each call advances a ring buffer; bars show

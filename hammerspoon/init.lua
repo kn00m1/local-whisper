@@ -1045,6 +1045,10 @@ local overlayFrame0 = nil       -- {x,y,w,h} captured at create
 local handleOverlayMessage      -- JS → Lua dispatch (assigned below)
 local resizeOverlayToContent    -- grow/clamp the window to content height
 local overlayEnterEdit          -- flip overlay to editable review mode
+-- Edit-mode: dictation stashed until the user copies/pastes/closes the review box.
+-- {raw, refined, lang, app, model, time, copied}. Declared here so both the
+-- message handler (above finishInsertion) and finishInsertion share one upvalue.
+local pendingDictation = nil
 
 -- Lua → JS bridge. Safe against missing overlay.
 local function jsEval(code)
@@ -1807,6 +1811,24 @@ local function finishInsertion(text, detectedLang, preRefineText)
     if finalText == "" then
         log("final: empty text after actions")
         hideOverlay()
+        return
+    end
+
+    -- Edit mode: don't insert. Stash the three texts and open the editable review
+    -- box; history is written later, at the terminal action (copy/paste/close).
+    if getEditMode() and ctx.insert then
+        local raw = ctx.originalText or finalText
+        pendingDictation = {
+            raw = raw,
+            refined = (finalText ~= raw) and finalText or nil,
+            lang = detectedLang or getLang(),
+            app = capturedAppName or "?",
+            model = getModelName(),
+            time = os.time(),
+            copied = false,
+        }
+        log("edit: opening review box (" .. #finalText .. " chars)")
+        overlayEnterEdit(finalText)
         return
     end
 

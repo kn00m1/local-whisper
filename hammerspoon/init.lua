@@ -1231,7 +1231,11 @@ handleOverlayMessage = function(msg)
         pendingDictation = nil
         overlayPinned = false
         overlayEditable = false
-        if overlay then overlay:delete(); overlay = nil end
+        -- Play the CSS exit animation, then delete the window once it finishes.
+        jsEval("lw.playExit && lw.playExit()")
+        local ov = overlay
+        overlay = nil
+        hs.timer.doAfter(0.15, function() if ov then ov:delete() end end)
         if rec then
             recordDictation(rec, text, rec.copied and "copied" or "dismissed")
         end

@@ -37,6 +37,8 @@ local P = {
     historyFile         = CONFIG_DIR .. "/history.json",
     audioDeviceFile     = CONFIG_DIR .. "/audio_device",
     themeFile           = CONFIG_DIR .. "/theme",
+    editModeFile        = CONFIG_DIR .. "/edit_mode",
+    graceFile           = CONFIG_DIR .. "/grace",
     -- LLM refinement
     refineFile          = CONFIG_DIR .. "/refine",
     refinePromptFile    = CONFIG_DIR .. "/refine_prompt",
@@ -212,6 +214,33 @@ local function cycleRefine()
     setRefineMode(not current)
     if not current and startWarmKeeperRef then startWarmKeeperRef()
     elseif current and stopWarmKeeperRef then stopWarmKeeperRef() end
+end
+
+-- Edit mode: when on, dictations open an editable review box instead of auto-pasting.
+local function getEditMode()
+    local f = io.open(P.editModeFile, "r")
+    if not f then return false end
+    local val = f:read("*a"):gsub("%s+", ""); f:close()
+    return val == "on"
+end
+
+local function setEditMode(on)
+    local f = io.open(P.editModeFile, "w")
+    if f then f:write(on and "on" or "off"); f:close() end
+end
+
+local function cycleEditMode()
+    setEditMode(not getEditMode())
+end
+
+-- Grace window (seconds) before OFF-mode auto-paste; also the click-to-edit window.
+local function getGraceWindow()
+    local f = io.open(P.graceFile, "r")
+    if not f then return 1.0 end
+    local val = f:read("*a"):gsub("%s+", ""); f:close()
+    local n = tonumber(val)
+    if not n or n < 0 then return 1.0 end
+    return n
 end
 
 -- Timing
@@ -1485,6 +1514,12 @@ local function buildMenuBarMenu()
     table.insert(items, {
         title = "Enter after insert: " .. enterState,
         fn = function() cycleEnter(); updateMenuBar() end,
+    })
+
+    -- Edit mode (review-and-edit box instead of auto-paste)
+    table.insert(items, {
+        title = "Edit mode: " .. (getEditMode() and "ON" or "OFF"),
+        fn = function() cycleEditMode(); updateMenuBar() end,
     })
 
     -- LLM refinement

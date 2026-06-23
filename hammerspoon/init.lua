@@ -1038,6 +1038,14 @@ end
 
 local overlay = nil  -- hs.webview instance
 
+-- Edit-mode overlay state + forward decls (visible as upvalues to every overlay
+-- fn below: createOverlay, hideOverlay, the message handler, etc.).
+local overlayEditable = false   -- true while the overlay is an editable review box
+local overlayFrame0 = nil       -- {x,y,w,h} captured at create
+local handleOverlayMessage      -- JS → Lua dispatch (assigned below)
+local resizeOverlayToContent    -- grow/clamp the window to content height
+local overlayEnterEdit          -- flip overlay to editable review mode
+
 -- Lua → JS bridge. Safe against missing overlay.
 local function jsEval(code)
     if overlay and overlay.evaluateJavaScript then overlay:evaluateJavaScript(code) end
@@ -1081,8 +1089,13 @@ local function createOverlay()
     x = math.max(frame.x + 10, math.min(x, frame.x + frame.w - OVERLAY_W - 10))
     y = math.max(frame.y + 10, math.min(y, frame.y + frame.h - OVERLAY_H - 10))
 
+    overlayFrame0 = { x = x, y = y, w = OVERLAY_W, h = OVERLAY_H }
+    -- JS → Lua message channel (same pattern as the dashboard). The wrapper
+    -- always calls the current handler value, robust to load ordering.
+    local controller = hs.webview.usercontent.new("lw")
+    controller:setCallback(function(m) if handleOverlayMessage then handleOverlayMessage(m) end end)
     overlay = hs.webview.new({ x = x, y = y, w = OVERLAY_W, h = OVERLAY_H },
-        { developerExtrasEnabled = true })
+        { developerExtrasEnabled = true }, controller)
     overlay:windowStyle({ "borderless" })
     overlay:level(hs.canvas.windowLevels.floating)
     overlay:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
@@ -1109,16 +1122,77 @@ end
 
 local function hideOverlay()
     if overlayPinned then return end
+    overlayEditable = false
     if overlay then overlay:delete(); overlay = nil end
 end
 
 local function forceHideOverlay()
     overlayPinned = false
+    overlayEditable = false
     if overlay then overlay:delete(); overlay = nil end
 end
 
 local function setOverlayText(text)
     jsEval("lw.setTranscript('" .. jsStr(text) .. "')")
+end
+
+-- Screen frame containing the overlay (for multi-monitor-correct clamping/cap).
+local function overlayScreenFrame()
+    if overlay then
+        local f = overlay:frame()
+        for _, s in ipairs(hs.screen.allScreens()) do
+            local sf = s:frame()
+            if f.x >= sf.x and f.x < sf.x + sf.w and f.y >= sf.y and f.y < sf.y + sf.h then
+                return sf
+            end
+        end
+    end
+    return hs.screen.mainScreen():frame()
+end
+
+-- Grow/shrink the overlay window to the content height `h` (px) reported by JS,
+-- keeping the bottom edge anchored (box grows upward) and staying on-screen.
+-- Capped at 70% of the screen height; the editor scrolls internally past that.
+resizeOverlayToContent = function(h)
+    if not overlay or not overlayEditable then return end
+    local sc = overlayScreenFrame()
+    local maxH = math.floor(sc.h * 0.70)
+    local newH = math.max(OVERLAY_H, math.min(math.ceil(h), maxH))
+    local f = overlay:frame()
+    local bottom = f.y + f.h
+    local newY = bottom - newH
+    newY = math.max(sc.y + 10, math.min(newY, sc.y + sc.h - newH - 10))
+    overlay:frame({ x = f.x, y = newY, w = OVERLAY_W, h = newH })
+end
+
+-- Flip the overlay into editable review mode showing `text`.
+overlayEnterEdit = function(text)
+    if not overlay then return end
+    overlayEditable = true
+    overlayPinned = true            -- block auto-hide while editing
+    overlay:allowTextEntry(true)    -- grant keyboard focus to the textarea
+    local sc = overlayScreenFrame()
+    local maxEditor = math.floor(sc.h * 0.70) - 52   -- 52 ≈ action bar + body padding
+    jsEval(string.format("lw.enterEdit('%s', %d)", jsStr(text), maxEditor))
+end
+
+-- JS → Lua dispatch for the overlay. (Terminal actions completed in later tasks.)
+handleOverlayMessage = function(msg)
+    local body = msg and msg.body
+    if type(body) ~= "table" then return end
+    local action = body.action
+    if action == "resize" then
+        if overlayEditable and body.h then resizeOverlayToContent(body.h) end
+    elseif action == "copy" then
+        if body.text then hs.pasteboard.setContents(body.text) end
+        log("edit: copy (" .. #(body.text or "") .. " chars)")
+    elseif action == "paste" then
+        log("edit: paste requested")
+    elseif action == "close" then
+        log("edit: close requested")
+    elseif action == "editstart" then
+        log("edit: editstart (click-to-edit)")
+    end
 end
 
 -- Drive refine status visible in the overlay dot (idle/refining/error).

@@ -420,9 +420,11 @@
       }
     },
     // Hand off from the streaming card to a real editable textbox.
-    enterEdit(text) {
+    // maxPx (from Lua) = max editor height before it scrolls internally (70% screen - chrome).
+    enterEdit(text, maxPx) {
       const ta = document.querySelector(".editor");
       ta.value = text || "";
+      this._maxEditorPx = (maxPx && maxPx > 80) ? maxPx : 100000;
       document.body.classList.add("editing");
       document.body.classList.remove("has-transcript");
       this._autogrow();
@@ -446,9 +448,17 @@
       const ta = document.querySelector(".editor");
       if (!ta || !document.body.classList.contains("editing")) return;
       ta.style.height = "auto";
-      ta.style.height = ta.scrollHeight + "px";
-      // Report desired total page height so Lua can resize the window.
-      this._send({ action: "resize", h: Math.ceil(document.body.scrollHeight) });
+      const max = this._maxEditorPx || 100000;
+      const need = ta.scrollHeight;                 // natural content height
+      const h = Math.min(need, max);
+      ta.style.height = h + "px";
+      ta.style.overflowY = need > max ? "auto" : "hidden";  // scroll only past the cap
+      // Compute the exact window height explicitly — body is height:100vh so
+      // document.body.scrollHeight is viewport-clamped and can't drive this.
+      // Layout: body padding-top(10) + editor(h) + gap(8) + actions + padding-bottom(14).
+      const actions = document.querySelector(".actions");
+      const total = 10 + h + 8 + (actions ? actions.offsetHeight : 30) + 14;
+      this._send({ action: "resize", h: Math.ceil(total) });
     },
   };
 

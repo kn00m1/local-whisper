@@ -527,10 +527,14 @@
       if (e.key === "Escape") { e.preventDefault(); window.lw._send({ action: "close", text: val() }); }
       else if (e.key === "Enter" && e.metaKey) { e.preventDefault(); window.lw._send({ action: "paste", text: val() }); }
     });
-    // Click-to-edit: a click on the read-only transcript card (OFF-mode grace) asks Lua to enter edit.
-    document.querySelector(".transcript-card").addEventListener("click", () => {
-      window.lw._send({ action: "editstart" });
-    });
+    // Click-to-edit: a plain click on the read-only transcript card (OFF-mode grace) asks Lua to
+    // enter edit. Use a *plain* click — the dictation trigger is a held modifier (e.g. Right Ctrl),
+    // so holding it while clicking starts a NEW recording instead. contextmenu is bound too so a
+    // mouse right-click also works (and is harmless on the read-only card).
+    const card = document.querySelector(".transcript-card");
+    const reqEditStart = (e) => { if (e) e.preventDefault(); window.lw._send({ action: "editstart" }); };
+    card.addEventListener("click", reqEditStart);
+    card.addEventListener("contextmenu", reqEditStart);
   })();
 
   // Audio-reactive waveform. Lua calls window.lw.level(0..1) at ~20Hz from the

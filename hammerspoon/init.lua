@@ -234,12 +234,15 @@ local function cycleEditMode()
 end
 
 -- Grace window (seconds) before OFF-mode auto-paste; also the click-to-edit window.
+-- The card spawns next to the cursor and a plain click during this window cancels
+-- the paste to edit instead. 2s tested as the floor that's comfortably clickable
+-- without feeling laggy.
 local function getGraceWindow()
     local f = io.open(P.graceFile, "r")
-    if not f then return 1.0 end
+    if not f then return 2.0 end
     local val = f:read("*a"):gsub("%s+", ""); f:close()
     local n = tonumber(val)
-    if not n or n < 0 then return 1.0 end
+    if not n or n < 0 then return 2.0 end
     return n
 end
 
@@ -1051,6 +1054,8 @@ local overlayEnterEdit          -- flip overlay to editable review mode
 local pendingDictation = nil
 local recordDictation           -- append a history entry (assigned after saveRecentDictations)
 local lastInsertedText = nil    -- undo state (shared by finishInsertion + edit-mode paste)
+local graceTimer = nil          -- OFF-mode: pending auto-paste; cancelled by click-to-edit
+local editIntent = false        -- OFF-mode: card clicked before final text; open box when ready
 
 -- Lua → JS bridge. Safe against missing overlay.
 local function jsEval(code)
@@ -1119,6 +1124,15 @@ local function createOverlay()
 end
 
 local function showOverlay()
+    -- A new recording supersedes any unfinished edit-mode dictation: cancel a
+    -- pending OFF-mode auto-paste and finalize whatever was pending so it isn't
+    -- silently lost (mirrors forceHideOverlay).
+    if graceTimer then graceTimer:stop(); graceTimer = nil end
+    if pendingDictation then
+        recordDictation(pendingDictation, nil, pendingDictation.copied and "copied" or "dismissed")
+        pendingDictation = nil
+    end
+    editIntent = false
     overlayPinned = false
     if overlay then overlay:delete() end
     createOverlay()
@@ -1133,6 +1147,8 @@ local function hideOverlay()
 end
 
 local function forceHideOverlay()
+    if graceTimer then graceTimer:stop(); graceTimer = nil end
+    editIntent = false
     -- Persist an abandoned edit-mode record so an interrupted dictation isn't lost.
     if pendingDictation then
         recordDictation(pendingDictation, nil, pendingDictation.copied and "copied" or "dismissed")
@@ -1242,7 +1258,19 @@ handleOverlayMessage = function(msg)
         log("edit: closed (" .. ((rec and rec.copied) and "copied" or "dismissed") .. ")")
 
     elseif action == "editstart" then
-        log("edit: editstart (click-to-edit)")
+        -- OFF-mode click-to-edit.
+        if overlayEditable then return end          -- already editing, ignore
+        if pendingDictation then
+            -- Final text is ready (grace window): cancel the auto-paste, open now.
+            if graceTimer then graceTimer:stop(); graceTimer = nil end
+            log("edit: click-to-edit, cancelling auto-paste")
+            overlayEnterEdit(pendingDictation.refined or pendingDictation.raw)
+        else
+            -- Clicked while still transcribing: remember the intent so
+            -- finishInsertion opens the box instead of auto-pasting.
+            editIntent = true
+            log("edit: click-to-edit before final; will open box when ready")
+        end
     end
 end
 
@@ -1881,58 +1909,69 @@ local function finishInsertion(text, detectedLang, preRefineText)
         return
     end
 
-    -- Edit mode: don't insert. Stash the three texts and open the editable review
-    -- box; history is written later, at the terminal action (copy/paste/close).
-    if getEditMode() and ctx.insert then
-        local raw = ctx.originalText or finalText
-        pendingDictation = {
-            raw = raw,
-            refined = (finalText ~= raw) and finalText or nil,
-            lang = detectedLang or getLang(),
-            app = capturedAppName or "?",
-            model = getModelName(),
-            time = os.time(),
-            copied = false,
-        }
+    -- Both modes stash the same three-text record. raw = whisper output;
+    -- refined = the LLM's changed text (nil if it left the text alone).
+    local raw = ctx.originalText or finalText
+    local rec = {
+        raw = raw,
+        refined = (finalText ~= raw) and finalText or nil,
+        lang = detectedLang or getLang(),
+        app = capturedAppName or "?",
+        model = getModelName(),
+        time = os.time(),
+        copied = false,
+    }
+
+    -- Show the final text read-only in the card (with a language tag if detected).
+    local function showFinal()
+        local display = finalText
+        if detectedLang then display = display .. " [" .. detectedLang:upper() .. "]" end
+        setOverlayText(display)
+    end
+
+    -- Edit mode ON, or the card was clicked mid-transcription (editIntent): don't
+    -- auto-paste — open the editable review box now. History is written later at
+    -- the terminal action (copy/paste/close).
+    if ctx.insert and (getEditMode() or editIntent) then
+        editIntent = false
+        pendingDictation = rec
         log("edit: opening review box (" .. #finalText .. " chars)")
         overlayEnterEdit(finalText)
         return
     end
 
-    if ctx.insert then
-        -- Track for undo
-        lastInsertedText = finalText
-        insertTextAtCursor(finalText, ctx.outputMode)
-        ctx.inserted = true
-
-        -- Press Enter after insertion if enter mode is on
-        if getEnterMode() then
-            hs.timer.doAfter(0.15, function()
-                hs.eventtap.keyStroke({}, "return")
-            end)
-        end
-    else
+    -- Action hooks disabled insertion entirely: record + linger, nothing pasted.
+    if not ctx.insert then
         log("final: insertion disabled by action hooks")
+        recordDictation(rec, nil, "dismissed")
+        showFinal()
+        hs.sound.getByFile("/System/Library/Sounds/Glass.aiff"):play()
+        hs.timer.doAfter(OVERLAY_LINGER, hideOverlay)
+        return
     end
 
-    ctx.text = finalText
-    runPostInsertActions(ctx)
+    -- Edit mode OFF: show the text read-only, then auto-paste after the grace
+    -- window. A click on the card during the window cancels this and enters the
+    -- editable flow (handleOverlayMessage "editstart").
+    pendingDictation = rec
+    showFinal()
 
-    -- Track in history (single writer; adds output + edited fields)
-    recordDictation(
-        { raw = ctx.originalText or finalText,
-          refined = (ctx.text ~= ctx.originalText) and ctx.text or nil,
-          lang = detectedLang or getLang(), app = capturedAppName or "?",
-          model = getModelName(), time = os.time() },
-        nil,
-        ctx.inserted and "pasted" or "dismissed"
-    )
-
-    local display = finalText
-    if detectedLang then display = display .. " [" .. detectedLang:upper() .. "]" end
-    setOverlayText(display)
-    hs.sound.getByFile("/System/Library/Sounds/Glass.aiff"):play()
-    hs.timer.doAfter(OVERLAY_LINGER, hideOverlay)
+    graceTimer = hs.timer.doAfter(getGraceWindow(), function()
+        graceTimer = nil
+        if pendingDictation ~= rec then return end   -- click-to-edit took over
+        pendingDictation = nil
+        lastInsertedText = finalText                 -- track for undo
+        insertTextAtCursor(finalText, ctx.outputMode)
+        ctx.inserted = true
+        if getEnterMode() then
+            hs.timer.doAfter(0.15, function() hs.eventtap.keyStroke({}, "return") end)
+        end
+        ctx.text = finalText
+        runPostInsertActions(ctx)
+        recordDictation(rec, nil, "pasted")
+        hs.sound.getByFile("/System/Library/Sounds/Glass.aiff"):play()
+        hs.timer.doAfter(OVERLAY_LINGER, hideOverlay)
+    end)
 end
 
 -- Insert transcribed text at cursor, with post-processing, optional LLM refinement, and action hooks

@@ -180,6 +180,14 @@ if [[ ! -f "$HAMMERSPOON_DIR/local_whisper_actions.lua" ]]; then
     fi
 fi
 
+# Install example dictionary if user doesn't have one yet
+if [[ ! -f "$CONFIG_DIR/dictionary.json" ]]; then
+    if [[ -f "$SCRIPT_DIR/hammerspoon/dictionary.example.json" ]]; then
+        cp "$SCRIPT_DIR/hammerspoon/dictionary.example.json" "$CONFIG_DIR/dictionary.json"
+        ok "Dictionary installed (edit ~/.thinking-out-loud/dictionary.json to customize)"
+    fi
+fi
+
 # ─── Step 5: Setup (permissions, trigger key, audio device, HS CLI) ─────────
 echo ""
 info "Step 5/6: Running setup (permissions, trigger key, audio device)..."

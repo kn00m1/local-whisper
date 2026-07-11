@@ -33,6 +33,7 @@ local P = {
     preferredLangsFile  = CONFIG_DIR .. "/preferred_langs",
     enterFile           = CONFIG_DIR .. "/enter",
     promptFile          = CONFIG_DIR .. "/prompt",
+    dictionaryFile      = CONFIG_DIR .. "/dictionary.json",
     recentFile          = CONFIG_DIR .. "/recent.json",
     historyFile         = CONFIG_DIR .. "/history.json",
     audioDeviceFile     = CONFIG_DIR .. "/audio_device",
@@ -354,6 +355,141 @@ local function normalizeText(text)
     return ((text or ""):gsub("%s+", " ")):gsub("^%s+", ""):gsub("%s+$", "")
 end
 
+-- User dictionary: deterministic replacements for words whisper mishears, plus
+-- vocabulary terms merged into whisper's --prompt. Pure logic lives between the
+-- markers so tests/test_dictionary.lua can extract and run it without hs.*.
+-- @dictionary-start
+-- ASCII word byte (byte-wise %w; bytes >=128 non-word, same permissive
+-- boundary as the %f[%w] filler patterns).
+local function isWordByte(b)
+    return b and ((b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122))
+end
+
+local Dictionary = {}
+
+-- Validate/normalize decoded JSON into
+-- { entries = {{find,value,len}, ... longest-first}, vocabulary = {...} }.
+-- Never nil; garbage in -> empty dict out.
+function Dictionary.parse(decoded)
+    local dict = { entries = {}, vocabulary = {} }
+    if type(decoded) ~= "table" then return dict end
+    if type(decoded.replacements) == "table" then
+        for k, v in pairs(decoded.replacements) do
+            if type(k) == "string" and type(v) == "string" then
+                local key = k:lower():gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+                local val = v:gsub("^%s+", ""):gsub("%s+$", "")
+                if key ~= "" and val ~= "" then
+                    dict.entries[#dict.entries + 1] = { find = key, value = val, len = #key }
+                end
+            end
+        end
+        table.sort(dict.entries, function(a, b)
+            if a.len ~= b.len then return a.len > b.len end
+            return a.find < b.find
+        end)
+    end
+    if type(decoded.vocabulary) == "table" then
+        for _, v in ipairs(decoded.vocabulary) do
+            if type(v) == "string" then
+                local t = v:gsub("^%s+", ""):gsub("%s+$", "")
+                if t ~= "" then dict.vocabulary[#dict.vocabulary + 1] = t end
+            end
+        end
+    end
+    return dict
+end
+
+-- Case-insensitive, word-boundary, literal (NOT Lua-pattern) replacement scan.
+-- Inserted values are never rescanned, so {a->b, b->a} cannot loop.
+function Dictionary.apply(text, entries)
+    if not entries or #entries == 0 or text == "" then return text end
+    local lower = text:lower()
+    local n, out, i = #text, {}, 1
+    while i <= n do
+        local hit = nil
+        for _, e in ipairs(entries) do              -- longest-first order
+            local j = i + e.len - 1
+            if j <= n and lower:sub(i, j) == e.find then
+                -- Boundary required only on sides where the key edge is a word
+                -- byte (frontier semantics: "c++" needs no right boundary).
+                local beforeOk = (i == 1) or not isWordByte(text:byte(i - 1))
+                                 or not isWordByte(e.find:byte(1))
+                local afterOk  = (j == n) or not isWordByte(text:byte(j + 1))
+                                 or not isWordByte(e.find:byte(e.len))
+                if beforeOk and afterOk then hit = e; break end
+            end
+        end
+        if hit then
+            out[#out + 1] = hit.value
+            i = i + hit.len
+        else
+            out[#out + 1] = text:sub(i, i)
+            i = i + 1
+        end
+    end
+    return table.concat(out)
+end
+
+-- Merge dictionary terms + user free-text prompt into one --prompt string.
+-- whisper.cpp keeps only the LAST ~224 tokens of an over-long prompt, so user
+-- text goes LAST (never trimmed); terms are budgeted into what remains,
+-- explicit vocabulary before replacement values. Dedupe against the user
+-- prompt is plain substring containment (a term appearing inside any
+-- user-prompt word is dropped), not word-boundary.
+function Dictionary.mergePrompt(userPrompt, dict, maxChars)
+    maxChars = maxChars or 600
+    userPrompt = (userPrompt or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local userLower = userPrompt:lower()
+    local seen, terms = {}, {}
+    local function add(term)
+        local k = term:lower()
+        if not seen[k] and not userLower:find(k, 1, true) then
+            seen[k] = true; terms[#terms + 1] = term
+        end
+    end
+    for _, v in ipairs(dict.vocabulary) do add(v) end
+    local values = {}
+    for _, e in ipairs(dict.entries) do values[#values + 1] = e.value end
+    table.sort(values, function(a, b) return a:lower() < b:lower() end)
+    for _, v in ipairs(values) do add(v) end
+    local sep = (userPrompt ~= "") and 2 or 0
+    local budget, used, kept = maxChars - #userPrompt - sep, 0, {}
+    for _, t in ipairs(terms) do
+        local cost = #t + (used > 0 and 2 or 0)
+        if used + cost > budget then break end
+        used = used + cost; kept[#kept + 1] = t
+    end
+    local vocabPart = table.concat(kept, ", ")
+    if vocabPart ~= "" and userPrompt ~= "" then return vocabPart .. ". " .. userPrompt end
+    if vocabPart ~= "" then return vocabPart end
+    return userPrompt
+end
+-- @dictionary-end
+
+-- Read-on-demand (no cache): edits to dictionary.json apply on the next
+-- dictation, same policy as the prompt file in getPromptArgs.
+function Dictionary.load()
+    local raw = readFile(P.dictionaryFile)
+    if raw == "" then return Dictionary.parse(nil) end
+    local ok, decoded = pcall(hs.json.decode, raw)
+    if not ok or type(decoded) ~= "table" then
+        log("dictionary: invalid JSON in " .. P.dictionaryFile .. ", ignoring")
+        return Dictionary.parse(nil)
+    end
+    return Dictionary.parse(decoded)
+end
+
+Dictionary.TEMPLATE = [[{
+  "_notes": "replacements: fix words whisper mishears — keys match case-insensitively as whole words/phrases, values are inserted verbatim. vocabulary: terms fed to whisper's --prompt to bias recognition. Changes apply on the next dictation.",
+  "replacements": {
+    "clod": "Claude",
+    "hammer spoon": "Hammerspoon",
+    "olama": "Ollama"
+  },
+  "vocabulary": ["whisper.cpp", "ffmpeg", "Hammerspoon", "Ollama", "macOS"]
+}
+]]
+
 -- App bundle IDs where auto-capitalize should be skipped (terminals, code editors)
 local NO_CAPITALIZE_APPS = {
     ["com.apple.Terminal"] = true,
@@ -387,6 +523,9 @@ local function postProcess(text, appBundleID)
     if not (appBundleID and NO_CAPITALIZE_APPS[appBundleID]) then
         text = text:gsub("^%l", string.upper)
     end
+    -- Apply user dictionary last so a replacement's canonical casing always
+    -- wins, even at sentence start (matching is case-insensitive)
+    text = Dictionary.apply(text, Dictionary.load().entries)
     return text
 end
 
@@ -790,10 +929,10 @@ local function getPartialModelPath()
     return getModelPath()  -- fall back to main model
 end
 
--- Read custom vocabulary prompt for whisper
+-- Whisper --prompt = dictionary vocabulary + replacement values + user prompt file
 local function getPromptArgs()
-    local content = readFile(P.promptFile):gsub("%s+$", "")
-    if content ~= "" then return { "--prompt", content } end
+    local merged = Dictionary.mergePrompt(readFile(P.promptFile), Dictionary.load(), 600)
+    if merged ~= "" then return { "--prompt", merged } end
     return {}
 end
 
@@ -1719,6 +1858,17 @@ local function buildMenuBarMenu()
     })
 
     table.insert(items, { title = "-" })
+
+    -- Edit dictionary (creates the file from the template on first use)
+    table.insert(items, {
+        title = "Edit Dictionary",
+        fn = function()
+            if readFile(P.dictionaryFile) == "" then
+                writeFile(P.dictionaryFile, Dictionary.TEMPLATE)
+            end
+            os.execute("open -t " .. shellQuote(P.dictionaryFile))
+        end,
+    })
 
     -- Reload actions
     table.insert(items, {

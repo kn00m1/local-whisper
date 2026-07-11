@@ -14,7 +14,7 @@ Hold **Right Cmd**, speak, release — text appears at your cursor.
 - **App-aware processing**: Auto-capitalizes in most apps, skips in terminals and code editors
 - **LLM refinement** (optional): Clean up dictated text with a local LLM via [Ollama](https://ollama.com) — fixes punctuation, removes filler words, formats numbered lists
 - **Text post-processing**: Remove filler words (um, uh, hmm), clean whitespace
-- **Custom vocabulary**: Provide a prompt file to improve recognition of domain-specific terms
+- **Custom dictionary**: Replacement rules fix words whisper consistently mishears ("clod" → "Claude"); vocabulary terms bias recognition via whisper's prompt
 - **Auto-stop on silence**: Automatically stops recording after 3 seconds of silence
 - **Menu bar**: Waveform icon shows recording status (turns red), click for settings and recent dictations
 - **Recent dictations**: View and re-paste your last 10 dictations from the menu bar
@@ -130,20 +130,33 @@ A waveform icon in the menu bar shows recording status (turns red when recording
 - Click any setting to cycle it
 - View and re-paste recent dictations
 - Open the settings overlay
+- Edit the custom dictionary
 - Reload voice commands
 - Emergency stop
 
 All settings are accessible from the menu bar — no keyboard shortcuts needed.
 
-## Custom vocabulary prompt
+## Custom dictionary & vocabulary
 
-Create `~/.thinking-out-loud/prompt` with terms whisper should recognize better:
+Whisper consistently mishears rare or technical terms. The dictionary fixes this in two complementary ways: deterministic **replacements** applied after transcription, and **vocabulary** terms that bias whisper's recognition up front.
 
+Click **Edit Dictionary** in the menu bar (creates the file on first use), or edit `~/.thinking-out-loud/dictionary.json` directly:
+
+```json
+{
+  "replacements": {
+    "clod": "Claude",
+    "hammer spoon": "Hammerspoon"
+  },
+  "vocabulary": ["whisper.cpp", "ffmpeg", "Ollama"]
+}
 ```
-Claude, Hammerspoon, whisper.cpp, ffmpeg, macOS, Lua, Anthropic
-```
 
-This is passed as `--prompt` to whisper-cli for both partial and final transcription. Adding your voice command trigger words here improves recognition.
+**Replacements** match case-insensitively as whole words or phrases — never mid-word (`cord` won't touch "recording"). Keys are literal text (not patterns), the longest key wins when keys overlap, and the value is inserted verbatim, so its casing is your canonical spelling. Replacements run on the final transcription only (the live preview shows uncorrected text), and the corrected text is what reaches LLM refinement, voice commands, and history.
+
+**Vocabulary** terms are merged into whisper's `--prompt` for both the live preview and the final pass, nudging recognition toward them. Replacement values are included automatically, so you rarely need to list the same term in both places.
+
+The plain `~/.thinking-out-loud/prompt` free-text file still works: dictionary terms go first and your prompt text goes last, so whisper's own truncation (it keeps only the last ~224 tokens) can never cut your text — the merged prompt is capped at ~600 characters, dropping dictionary terms first if needed. Edits to either file apply on the next dictation, no reload needed. ASCII keys are recommended: non-ASCII keys match case-sensitively.
 
 ## LLM refinement (optional)
 

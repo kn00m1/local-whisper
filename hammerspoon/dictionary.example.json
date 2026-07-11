@@ -1,0 +1,9 @@
+{
+  "_notes": "replacements: fix words whisper mishears — keys match case-insensitively as whole words/phrases, values are inserted verbatim. vocabulary: terms fed to whisper's --prompt to bias recognition. Changes apply on the next dictation.",
+  "replacements": {
+    "clod": "Claude",
+    "hammer spoon": "Hammerspoon",
+    "olama": "Ollama"
+  },
+  "vocabulary": ["whisper.cpp", "ffmpeg", "Hammerspoon", "Ollama", "macOS"]
+}

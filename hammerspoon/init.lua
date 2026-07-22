@@ -19,7 +19,12 @@ os.execute("mkdir -p '" .. CONFIG_DIR .. "'")
 
 -- External binaries (absolute paths, with ARM/Intel fallback)
 local FFMPEG = hs.fs.attributes("/opt/homebrew/bin/ffmpeg") and "/opt/homebrew/bin/ffmpeg" or "/usr/local/bin/ffmpeg"
+-- whisper-cli: prefer a source build in ~/whisper.cpp, else the Homebrew bottle
 local WHISPER_BIN = HOME .. "/whisper.cpp/build/bin/whisper-cli"
+if not hs.fs.attributes(WHISPER_BIN) then
+    WHISPER_BIN = hs.fs.attributes("/opt/homebrew/bin/whisper-cli") and "/opt/homebrew/bin/whisper-cli"
+        or "/usr/local/bin/whisper-cli"
+end
 local MODELS_DIR = HOME .. "/whisper.cpp/models"
 
 -- All user/app file paths live in a single table so the main chunk stays well

@@ -46,11 +46,19 @@ For a full guide on writing custom commands, see **[docs/VOICE_COMMANDS.md](docs
 
 ## Install
 
+One command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kn00m1/thinking-out-loud/main/install.sh | bash
+```
+
+Or from a clone:
+
 ```bash
 git clone https://github.com/kn00m1/thinking-out-loud.git && cd thinking-out-loud && ./install.sh
 ```
 
-The installer handles everything: Homebrew dependencies, building whisper.cpp, downloading models, and setting up Hammerspoon. It then runs `setup.sh` which walks you through choosing your trigger key, microphone, and granting permissions.
+The installer handles everything: Homebrew dependencies, whisper.cpp (prebuilt Homebrew bottle, source build as fallback), model downloads, Hammerspoon setup, and optionally Ollama for LLM refinement. It then runs `setup.sh` which walks you through choosing your trigger key, microphone, and granting permissions. Run standalone, it fetches itself into `~/.thinking-out-loud/src` first.
 
 To change the trigger key or re-run setup later:
 
